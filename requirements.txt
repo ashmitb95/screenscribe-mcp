@@ -3,3 +3,4 @@ youtube-transcript-api
 anthropic
 Pillow
 mcp[cli]
+python-dotenv

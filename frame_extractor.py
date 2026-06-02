@@ -10,6 +10,69 @@ from PIL import Image
 MIN_FRAMES_FALLBACK = 15
 FALLBACK_INTERVAL = 10.0  # seconds between fallback samples
 
+# ── Snap-to-stable + perceptual dedup (targeted extraction) ────────────────────
+# A transcript cue ("look here") usually precedes the completed visual. After
+# picking a timestamp we scan FORWARD up to SNAP_WINDOW seconds and capture the
+# first frame where the screen has settled, so we land on the finished
+# annotation instead of mid-draw.
+SNAP_WINDOW = 6.0          # seconds to scan forward from the picked timestamp
+SNAP_STEP = 1.5            # seconds between samples while searching
+# Two frames count as "settled" (snap) or "duplicate" (dedup) when their
+# perceptual difference-hash (dHash, 16x16 = 256-bit) Hamming distance is <= the
+# threshold. 16x16 (not 8x8) is needed to register sparse annotations on line-art
+# charts: at 8x8 a blank diagram and the same diagram fully annotated hash only
+# ~5 apart (indistinguishable from a true duplicate); at 16x16 they're ~20+ apart
+# while a genuinely static screen stays ~11.
+SNAP_STABLE_HAMMING = 12
+DEDUP_HAMMING = 14
+
+
+def dhash(path: Path, hash_size: int = 16) -> int:
+    """
+    Perceptual difference-hash of an image (256-bit by default). Robust to tiny
+    rendering differences; near-identical frames produce hashes a small Hamming
+    distance apart. Used to drop duplicate frames and detect a settled screen.
+    """
+    img = Image.open(path).convert("L").resize((hash_size + 1, hash_size), Image.LANCZOS)
+    px = img.tobytes()  # row-major, one byte per pixel in mode "L"
+    bits = 0
+    for row in range(hash_size):
+        base = row * (hash_size + 1)
+        for col in range(hash_size):
+            bits = (bits << 1) | int(px[base + col] > px[base + col + 1])
+    return bits
+
+
+def hamming(a: int, b: int) -> int:
+    """Number of differing bits between two perceptual hashes."""
+    return bin(a ^ b).count("1")
+
+
+def _snap_to_stable(video_path, ts, max_width, tmp_dir,
+                    window=SNAP_WINDOW, step=SNAP_STEP, stable_hamming=SNAP_STABLE_HAMMING):
+    """
+    Scan forward from `ts` and return the first timestamp where the on-screen
+    visual has settled (a sample is near-identical to the next one) — i.e. the
+    drawing/annotation is complete. Falls back to `ts` if there aren't enough
+    samples, or to the last sample if the screen never settles within `window`.
+    """
+    samples = []
+    t = ts
+    end = ts + window
+    while t <= end:
+        tmp = tmp_dir / f"_snap_{t:.2f}.png"
+        if extract_frame(video_path, t, tmp, max_width):
+            samples.append((t, dhash(tmp)))
+            tmp.unlink(missing_ok=True)
+        t += step
+
+    if len(samples) < 2:
+        return ts
+    for (t1, h1), (_t2, h2) in zip(samples, samples[1:]):
+        if hamming(h1, h2) <= stable_hamming:
+            return t1  # frame at t1 already looks like t1+step → settled
+    return samples[-1][0]
+
 
 def detect_scene_changes(video_path: Path, threshold: float) -> list[float]:
     """
@@ -117,26 +180,50 @@ def extract_frames_at_timestamps(
     selections: list[dict],
     max_width: int,
     save_metadata: bool = True,
+    snap: bool = True,
+    dedup: bool = True,
 ) -> list[dict]:
     """
     Extract frames at specific pre-selected timestamps.
     `selections` is a list of {"timestamp": float, "reason": str}.
+
+    snap:  scan forward from each timestamp to land on the frame where the
+           visual has settled (drawing complete), not mid-draw.
+    dedup: drop a frame that is perceptually near-identical to one already kept
+           (e.g. two transcript cues over the same static chart).
+
     Returns list of dicts: [{'timestamp': float, 'path': str, 'reason': str}, ...]
     Writes frames/frames.json unless save_metadata is False.
     """
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     frames = []
-    for i, sel in enumerate(selections):
+    kept_hashes = []  # (timestamp, dhash) for each accepted frame
+    total = len(selections)
+    for n, sel in enumerate(selections, 1):
         ts = sel["timestamp"]
         reason = sel.get("reason", "")
-        output_path = frames_dir / f"frame_{i:04d}_{ts:.2f}s.png"
+        if snap:
+            ts = _snap_to_stable(video_path, ts, max_width, frames_dir)
+
+        # Index by kept count so accepted frames stay contiguous (frame_0000, ...).
+        output_path = frames_dir / f"frame_{len(frames):04d}_{ts:.2f}s.png"
         ok = extract_frame(video_path, ts, output_path, max_width)
-        if ok:
-            frames.append({"timestamp": ts, "path": str(output_path), "reason": reason})
-            print(f"  [{i + 1}/{len(selections)}] {ts:.1f}s → {output_path.name}")
-        else:
-            print(f"  [{i + 1}/{len(selections)}] {ts:.1f}s → FAILED (skipped)")
+        if not ok:
+            print(f"  [{n}/{total}] {ts:.1f}s → FAILED (skipped)")
+            continue
+
+        if dedup:
+            h = dhash(output_path)
+            dup = next((kt for kt, kh in kept_hashes if hamming(h, kh) <= DEDUP_HAMMING), None)
+            if dup is not None:
+                output_path.unlink(missing_ok=True)
+                print(f"  [{n}/{total}] {ts:.1f}s → skipped (near-duplicate of {dup:.1f}s)")
+                continue
+            kept_hashes.append((ts, h))
+
+        frames.append({"timestamp": ts, "path": str(output_path), "reason": reason})
+        print(f"  [{n}/{total}] {ts:.1f}s → {output_path.name}")
 
     if save_metadata:
         (frames_dir / "frames.json").write_text(json.dumps(frames, indent=2))

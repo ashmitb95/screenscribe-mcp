@@ -12,8 +12,6 @@ import time
 
 import anthropic
 
-from frame_extractor import apply_min_interval
-
 MAX_RETRIES = 5
 INITIAL_BACKOFF = 2.0
 
@@ -120,28 +118,40 @@ def _call_claude_with_retry(client, model, system_prompt, user_prompt):
 
 
 def _validate_and_filter(raw_selections, video_duration, max_items, min_interval, time_range=None):
-    """Validate timestamps, sort, apply interval filter, and cap at max."""
+    """
+    Turn Claude's raw picks into the final selection.
+
+    raw_selections arrives in IMPORTANCE order (Claude is told to return the
+    most critical moments first). We greedily accept picks in that order,
+    skipping any that fall within min_interval of an already-accepted pick —
+    which both enforces spacing and collapses exact/near-duplicate timestamps —
+    and stop once we have max_items. The kept picks are then sorted by time for
+    chronological output. This keeps the MOST IMPORTANT moments when capping,
+    rather than just the earliest-in-time ones.
+    """
     range_start = time_range[0] if time_range else 0
     range_end = time_range[1] if time_range else video_duration
 
-    selections = []
+    accepted = []
     for item in raw_selections:
-        ts = float(item.get("timestamp", 0))
+        raw_ts = item.get("timestamp")
+        if raw_ts is None:
+            continue  # skip picks with no timestamp
+        try:
+            ts = float(raw_ts)
+        except (TypeError, ValueError):
+            continue  # skip malformed picks rather than crashing the run
         reason = str(item.get("reason", ""))
-        if range_start <= ts <= range_end:
-            selections.append({"timestamp": ts, "reason": reason})
+        if not (range_start <= ts <= range_end):
+            continue
+        if any(abs(ts - a["timestamp"]) < min_interval for a in accepted):
+            continue  # too close to a higher-priority pick (or an exact duplicate)
+        accepted.append({"timestamp": ts, "reason": reason})
+        if len(accepted) >= max_items:
+            break
 
-    selections.sort(key=lambda x: x["timestamp"])
-
-    timestamps = [s["timestamp"] for s in selections]
-    filtered_ts = set(apply_min_interval(timestamps, min_interval))
-    selections = [s for s in selections if s["timestamp"] in filtered_ts]
-
-    if len(selections) > max_items:
-        selections = selections[:max_items]
-        selections.sort(key=lambda x: x["timestamp"])
-
-    return selections
+    accepted.sort(key=lambda x: x["timestamp"])
+    return accepted
 
 
 def select_frames_from_transcript(

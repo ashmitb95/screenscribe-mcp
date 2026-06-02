@@ -11,6 +11,8 @@ import time
 
 import anthropic
 
+from config import FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME
+
 MAX_RETRIES = 5
 INITIAL_BACKOFF = 2.0  # seconds
 
@@ -124,7 +126,8 @@ def describe_frames(
         response = _call_with_retry(
             client,
             model=model,
-            max_tokens=2000,
+            # Scale with batch size so per-frame descriptions aren't truncated.
+            max_tokens=FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME * len(batch),
             system=(
                 "You are analyzing an instructional screen-recording video. "
                 "Charts and annotations only — no webcam. "

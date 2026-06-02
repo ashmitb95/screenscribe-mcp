@@ -56,9 +56,9 @@ def ask(
         )
 
     sections.append(
-        f"TRANSCRIPT (first 10000 chars)\n"
+        f"TRANSCRIPT\n"
         f"{'─' * 40}\n"
-        f"{full_transcript[:10000]}"
+        f"{full_transcript}"
     )
 
     if context and context.strip():

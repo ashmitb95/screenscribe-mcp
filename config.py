@@ -40,3 +40,16 @@ SLIDE_SELECTION_MAX = 15
 
 # Minimum seconds between two selected slides.
 SLIDE_SELECTION_MIN_INTERVAL = 10.0
+
+# ── MCP response sizing ───────────────────────────────────────────────────────
+# Max transcript characters returned INLINE by the get_session MCP tool. The full
+# transcript is always persisted at <session>/transcript.json; when it exceeds
+# this cap, get_session returns a preview plus `transcript_path` and
+# `transcript_truncated: true` — never a silent cut. Set to None for no cap
+# (always return the full transcript inline).
+MAX_INLINE_TRANSCRIPT_CHARS = 100000
+
+# Per-frame output token budget for Vision frame descriptions. A batch's
+# max_tokens scales with the number of frames in it so descriptions are not cut
+# off mid-sentence (previously a flat 2000 for up to 8 frames ≈ 250 tokens/frame).
+FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME = 1024

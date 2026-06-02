@@ -50,6 +50,7 @@ from config import (
     FRAME_SELECTION_MODEL,
     IMAGE_MAX_WIDTH,
     MAX_FRAMES_PER_BATCH,
+    MAX_INLINE_TRANSCRIPT_CHARS,
     SLIDE_SELECTION_MAX,
     SLIDE_SELECTION_MIN_INTERVAL,
     TRANSCRIPT_WINDOW,
@@ -466,6 +467,12 @@ def get_session(session_id: str) -> str:
             "note": "No visual/frame analysis was performed. Answers are based solely on the transcript.",
         }
 
+    # Return the full transcript inline. Only when it exceeds a generous cap do
+    # we return a preview and point to the on-disk file — never a silent cut.
+    cap = MAX_INLINE_TRANSCRIPT_CHARS
+    truncated = cap is not None and len(full_transcript) > cap
+    transcript_inline = full_transcript[:cap] if truncated else full_transcript
+
     return json.dumps({
         "video_id": session["video_id"],
         "title": session.get("title", "Unknown"),
@@ -475,7 +482,10 @@ def get_session(session_id: str) -> str:
         "extracted_at": session.get("extracted_at", ""),
         "analysis_source": analysis_source,
         "frame_descriptions": frame_descriptions,
-        "transcript": full_transcript[:15000],
+        "transcript": transcript_inline,
+        "transcript_chars": len(full_transcript),
+        "transcript_truncated": truncated,
+        "transcript_path": str(session_dir(session["video_id"]) / "transcript.json"),
     })
 
 
