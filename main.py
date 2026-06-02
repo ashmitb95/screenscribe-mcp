@@ -45,6 +45,8 @@ from config import (
     FRAME_SELECTION_MAX,
     FRAME_SELECTION_MIN_INTERVAL,
     FRAME_SELECTION_MODEL,
+    GEMINI_MEDIA_RESOLUTION_LOW,
+    GEMINI_MODEL,
     IMAGE_MAX_WIDTH,
     MAX_FRAMES_PER_BATCH,
     MIN_FRAME_INTERVAL,
@@ -65,7 +67,7 @@ from session import (
     session_dir,
     session_exists,
 )
-from transcript_selector import select_frames_from_transcript, select_slides_from_transcript
+from gemini_selector import select_frames, select_slides
 
 
 def extract_video_id(url: str) -> str:
@@ -209,19 +211,28 @@ def cmd_extract(args):
         transcript = fetch_transcript(video_id, s_dir)
 
         if use_transcript_select:
-            # 2 — Analyze transcript for key visual moments
-            print(f"\n[2/{steps}] Analyzing transcript for key visual moments...")
-            selections = select_frames_from_transcript(
-                transcript=transcript,
-                model=FRAME_SELECTION_MODEL,
+            # 2 — Identify key visual moments (Gemini watches the video if a key
+            #     is set; otherwise falls back to transcript-based picking).
+            print(f"\n[2/{steps}] Identifying key visual moments...")
+            video_duration = (
+                transcript[-1]["start"] + transcript[-1].get("duration", 0)
+                if transcript else 0.0
+            )
+            selections = select_frames(
+                args.url,
+                transcript,
+                transcript_model=FRAME_SELECTION_MODEL,
+                gemini_model=GEMINI_MODEL,
                 max_frames=args.max_frames,
                 min_interval=FRAME_SELECTION_MIN_INTERVAL,
                 chapters=chapters,
                 focus=args.focus,
                 time_range=args.time_range,
                 timestamps=args.timestamps,
+                video_duration=video_duration,
+                media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
             )
-            print(f"  Identified {len(selections)} key moments from transcript")
+            print(f"  Identified {len(selections)} key moments")
             for i, sel in enumerate(selections, 1):
                 print(f"    {i:2d}. {sel['timestamp']:.1f}s — {sel['reason']}")
 
@@ -404,17 +415,26 @@ def cmd_slides(args):
     else:
         transcript = fetch_transcript(video_id, s_dir)
 
-    # Step 2: Select slide moments
-    print(f"\n[2/3] Analyzing transcript for slide-worthy moments...")
-    selections = select_slides_from_transcript(
-        transcript=transcript,
-        model=FRAME_SELECTION_MODEL,
+    # Step 2: Select slide moments (Gemini watches the video if a key is set;
+    # otherwise falls back to transcript-based picking).
+    print(f"\n[2/3] Identifying slide-worthy moments...")
+    video_duration = (
+        transcript[-1]["start"] + transcript[-1].get("duration", 0)
+        if transcript else 0.0
+    )
+    selections = select_slides(
+        args.url,
+        transcript,
+        transcript_model=FRAME_SELECTION_MODEL,
+        gemini_model=GEMINI_MODEL,
         max_slides=args.max_slides,
         min_interval=SLIDE_SELECTION_MIN_INTERVAL,
         chapters=chapters,
         focus=args.focus,
         time_range=args.time_range,
         timestamps=args.timestamps,
+        video_duration=video_duration,
+        media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
     )
     print(f"  Identified {len(selections)} slide moments:")
     for i, sel in enumerate(selections, 1):

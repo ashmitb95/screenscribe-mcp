@@ -62,7 +62,7 @@ def describe_frames(
 ) -> list[str]:
     """
     For each batch of frames, ask Claude to describe what's on screen
-    and what concept the instructor is explaining.
+    and what is happening, cross-referenced against the transcript.
     Returns a list of description strings (one per batch).
 
     If `existing_descriptions` is provided, skips that many batches (resume).
@@ -114,12 +114,13 @@ def describe_frames(
             "type": "text",
             "text": (
                 "For each frame above, describe concisely:\n"
-                "1. What is visible on screen — chart type, timeframe, price levels, "
-                "highlighted zones, drawn lines, annotations, candle patterns\n"
-                "2. What concept the instructor is demonstrating based on the transcript\n"
-                "3. Any specific entry/exit conditions, confirmations, or invalidations shown\n\n"
-                "Be precise — mention exact visual elements like 'red supply zone', "
-                "'wick below support closing above', 'break and retest', etc."
+                "1. What is visible on screen — people, objects, text, UI, diagrams, "
+                "charts, scene, and key visual details\n"
+                "2. What is happening or being shown/explained, using the transcript context\n"
+                "3. Any specific details that matter — labels, values, steps, conditions, "
+                "or results shown\n\n"
+                "Be precise and concrete — mention exact visible elements rather than "
+                "generic descriptions."
             ),
         })
 
@@ -129,9 +130,9 @@ def describe_frames(
             # Scale with batch size so per-frame descriptions aren't truncated.
             max_tokens=FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME * len(batch),
             system=(
-                "You are analyzing an instructional screen-recording video. "
-                "Charts and annotations only — no webcam. "
-                "Extract precise, actionable information from each frame."
+                "You are analyzing frames from a video. Describe each frame "
+                "precisely and factually, extracting the information most useful "
+                "for understanding what is shown."
             ),
             messages=[{"role": "user", "content": content}],
         )

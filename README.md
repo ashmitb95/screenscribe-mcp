@@ -1,6 +1,6 @@
 # video-analyzer
 
-Turn YouTube videos into queryable knowledge sessions — extract transcripts, key frames, or presentation slides, then ask anything about them with your own files as context.
+Turn YouTube videos into queryable knowledge sessions. **Gemini watches the video** to pick the frames worth capturing; **Claude describes them and answers your questions** — with your own files as context.
 
 Works as a standalone CLI and as an MCP server compatible with any MCP client (Claude Code, Cursor, Windsurf, Continue, custom agents, etc.).
 
@@ -10,8 +10,9 @@ Works as a standalone CLI and as an MCP server compatible with any MCP client (C
 
 You can — and for some videos that's fine. video-analyzer starts there (transcript-only mode is free and instant) but goes further when you need it:
 
-- **Visual context matters.** Transcripts say "look at this chart" or "notice the pattern here" — without the actual frame, an LLM is guessing. video-analyzer extracts the exact frames being referenced and describes them with a vision model, so nothing is lost.
-- **Slide extraction.** Pull out the key completed visuals (diagrams, code, summaries) as standalone images you can reference or share — something a transcript alone can never give you.
+- **It watches the video, not just the words.** Gemini natively watches the video and picks the precise, well-distributed moments where something important is on screen — so frame selection works on any kind of video: lectures, tutorials, demos, talks, cooking, sports, gameplay, interviews, not just screen recordings.
+- **Visual context matters.** Transcripts say "look at this" or "notice that" — without the actual frame, an LLM is guessing. video-analyzer captures the exact moments being referenced and describes them with a vision model, so nothing is lost. Duplicate and near-identical frames are filtered out automatically.
+- **Slide extraction.** Pull out the key completed visuals (diagrams, scenes, code, summaries) as standalone images you can reference or share — something a transcript alone can never give you.
 - **Persistent sessions.** Process a video once, query it forever. No re-pasting, no token waste, no hitting context limits on long videos.
 - **Context injection.** Ask questions with your own project files injected alongside the video knowledge — "implement what this video describes, using my existing interfaces." A raw transcript paste can't do that cleanly.
 - **Source transparency.** Every answer tells you whether it's based on transcript alone or transcript + visual analysis, so you know what you're getting.
@@ -29,6 +30,19 @@ The tool gives you a spectrum: start with transcript-only (fast, free), upgrade 
 
 ---
 
+## How it works
+
+video-analyzer is built on two models, each doing what it's best at:
+
+- **Gemini — sees the video.** The YouTube URL is handed to Gemini, which natively watches the video (frames + audio) and returns the precise timestamps where something visually important is on screen. This is what makes frame selection accurate and content-agnostic — it works on any video, not just screen recordings. Cheap (~$0.02–0.05 per video at low media resolution) and fast.
+- **Claude — describes and reasons.** A Claude vision model describes each extracted frame; a Claude model answers your questions using the transcript, the frame descriptions, and any project files you inject.
+
+ffmpeg extracts Gemini's chosen timestamps, snapping each forward to the moment the on-screen visual has settled and de-duplicating near-identical frames via perceptual hashing.
+
+A lightweight **transcript layer** runs alongside the pair: fetch a video's transcript instantly and for free (handy for quick agentic lookups over MCP), and — if no Gemini key is configured — fall back to transcript-based frame selection so the tool still works.
+
+---
+
 ## Architecture
 
 ```
@@ -38,8 +52,9 @@ video-analyzer/
 ├── analyzer.py            Vision LLM describes frames in batches
 ├── asker.py               LLM answers questions with session + context
 ├── downloader.py          yt-dlp video download + youtube-transcript-api fetch
-├── frame_extractor.py     ffmpeg scene-change detection + targeted extraction
-├── transcript_selector.py Transcript analysis for frame/slide selection
+├── frame_extractor.py     ffmpeg extraction + snap-to-stable + perceptual dedup
+├── gemini_selector.py     Gemini watches the video to pick frames (primary)
+├── transcript_selector.py Transcript-based frame/slide selection (fallback)
 ├── session.py             Session persistence at ~/.video-analyzer/
 ├── context.py             Universal context loader (files, dirs, URLs, stdin)
 ├── config.py              Model names, thresholds, batch sizes
@@ -91,9 +106,12 @@ source venv/bin/activate          # Windows WSL: same command
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env — add your Anthropic API key:
-# ANTHROPIC_API_KEY=sk-ant-...
+# Edit .env — add both keys:
+# ANTHROPIC_API_KEY=sk-ant-...   # Claude — frame descriptions + answering
+# GEMINI_API_KEY=...             # Gemini — watches the video to pick frames
 ```
+
+The tool degrades gracefully: with only `ANTHROPIC_API_KEY` it still works, falling back to transcript-based frame selection. For the full experience, set both.
 
 ---
 
@@ -130,7 +148,7 @@ Options:
 python main.py slides "https://youtu.be/dQw4w9WgXcQ"
 ```
 
-Identifies complete diagrams, charts, code snippets, and summaries that would work as standalone slides. Extracts them into `~/.video-analyzer/{id}/slides/`.
+Identifies complete, self-contained visuals — diagrams, scenes, charts, code, key moments, summaries — that would work as standalone images. Extracts them into `~/.video-analyzer/{id}/slides/`.
 
 Options:
 
@@ -267,28 +285,33 @@ The client will:
 | `SLIDE_SELECTION_MIN_INTERVAL` | `10.0s`             | Min gap between slides (wider than frames for diversity).     |
 | `MAX_FRAMES_PER_BATCH`         | `8`                 | Frames per vision API call.                                   |
 | `IMAGE_MAX_WIDTH`              | `1280px`            | Frames resized to this width before API call.                 |
+| `GEMINI_MODEL`                 | `gemini-3.5-flash`  | Gemini model that watches the video for frame selection (when `GEMINI_API_KEY` is set). |
+| `GEMINI_MEDIA_RESOLUTION_LOW`  | `True`              | Low-res video sampling (~100 tok/s) — cheaper; set `False` for finer visual detail. |
+| `MAX_INLINE_TRANSCRIPT_CHARS`  | `100000`            | Max transcript chars `get_session` returns inline before pointing to the file instead. `None` = unlimited. |
+| `FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME` | `1024`    | Output token budget per frame for vision descriptions (scales with batch size).      |
 
-Models are configurable in `config.py`. The defaults use Anthropic's Claude, but can be swapped for any provider supported by the Anthropic SDK or a compatible wrapper.
+Models are configurable in `config.py`. Frame descriptions and answering use Anthropic's Claude; frame *selection* uses Gemini when a key is set (otherwise a Claude text model on the transcript).
 
 ---
 
-## API key
+## API keys
 
-The `ANTHROPIC_API_KEY` is used by:
+The base setup uses two keys:
 
-- `extract` (full mode) — vision model for frame descriptions
-- `slides` — one cheap text model call for transcript analysis
-- `ask` — LLM for answering questions
+- **`ANTHROPIC_API_KEY` (Claude)** — frame descriptions (`extract`) and answering (`ask`). Required.
+- **`GEMINI_API_KEY` (Gemini)** — watches the video to select frames for `extract` and `slides`. Strongly recommended; without it, selection falls back to a cheap Claude text model reading the transcript. Get one from [Google AI Studio](https://aistudio.google.com/apikey).
 
 These commands make **no** API calls and need no key:
 
-- `extract --transcript-only` — fetches from YouTube only
+- `extract --transcript-only` — fetches the transcript from YouTube only
 - `get_session` / `list_sessions` — reads from disk
 
 ---
 
 ## Notes
 
+- Works on **any kind of video** — selection and descriptions are content-agnostic. Use a question's `focus` (or the `--focus` flag) to steer toward a specific subject when you want to.
+- `get_session` returns the **full transcript** (no silent truncation). For very long videos it returns a preview plus a `transcript_path` to the on-disk file and a `transcript_truncated` flag, rather than dropping data silently.
 - Sessions are **machine-local** (`~/.video-analyzer/`). Cloning the repo on a new machine means re-running `extract` once per video.
 - The `output/` directory in the project root is legacy and ignored by git. All current session data lives at `~/.video-analyzer/`.
 - `youtube-transcript-api` v1.2.4+ uses an instance-based API: `YouTubeTranscriptApi().fetch(video_id)`. If you see `AttributeError: get_transcript`, you're on an old version — `pip install -U youtube-transcript-api`.

@@ -1,10 +1,13 @@
 """
 video-analyzer MCP server.
 
+Built on Gemini (watches the video to pick frames) + Claude (describes
+frames and answers questions), with a free transcript layer alongside.
+
 Exposes tools to any MCP client (Claude Code, Claude Desktop, etc.):
   extract_transcript(url)    — fast: fetch transcript only (no API cost)
-  extract_video(url)         — full: download video, extract frames, describe with Vision
-  extract_slides(url)        — extract presentation-quality slide frames
+  extract_video(url)         — full: Gemini picks frames, ffmpeg extracts, Claude Vision describes
+  extract_slides(url)        — Gemini picks complete on-screen visuals, extracted as PNGs
   get_session(session_id)    — return session data with analysis source metadata
   list_sessions()            — list all processed videos
 
@@ -13,12 +16,13 @@ Claude Code usage:
     {
       "mcpServers": {
         "video-analyzer": {
-          "command": "python",
-          "args": ["/home/ashmit/projects/video-analyzer/server.py"],
-          "env": { "ANTHROPIC_API_KEY": "sk-ant-..." }
+          "command": "/path/to/video-analyzer-llm/venv/bin/python",
+          "args": ["/path/to/video-analyzer-llm/server.py"],
+          "env": { "ANTHROPIC_API_KEY": "sk-ant-...", "GEMINI_API_KEY": "..." }
         }
       }
     }
+  (The server also auto-loads both keys from the project .env.)
 
 Then in Claude Code, just mention a YouTube URL — Claude will call
 extract_video automatically if needed, then use get_session to answer
@@ -48,6 +52,8 @@ from config import (
     FRAME_SELECTION_MAX,
     FRAME_SELECTION_MIN_INTERVAL,
     FRAME_SELECTION_MODEL,
+    GEMINI_MEDIA_RESOLUTION_LOW,
+    GEMINI_MODEL,
     IMAGE_MAX_WIDTH,
     MAX_FRAMES_PER_BATCH,
     MAX_INLINE_TRANSCRIPT_CHARS,
@@ -165,12 +171,13 @@ def extract_video(
     timestamps: str = "",
 ) -> str:
     """
-    Full visual processing of a YouTube video: downloads the video,
-    extracts key frames, and generates visual descriptions using
-    Claude Vision. Slow (~2 min) and uses API credits.
+    Full visual analysis of a YouTube video: Gemini watches the video to
+    pick the key frames, ffmpeg extracts them, and Claude Vision describes
+    each one. Slow (~2 min) and uses API credits. Works on any kind of
+    video, not just screen recordings.
 
     Only use this when the user specifically needs visual analysis
-    (e.g. charts, diagrams, code shown on screen, UI elements).
+    (what's shown on screen, diagrams, demonstrations, UI, scenes, etc.).
     For most questions about a video, extract_transcript is sufficient.
 
     Optional parameters for customization:
@@ -207,17 +214,26 @@ def extract_video(
         video_path, _, chapters = download_video(url, s_dir)
         transcript = fetch_transcript(video_id, s_dir)
 
-        # Analyze transcript for key visual moments
-        from transcript_selector import select_frames_from_transcript
-        selections = select_frames_from_transcript(
-            transcript=transcript,
-            model=FRAME_SELECTION_MODEL,
+        # Identify key visual moments — Gemini watches the video when a key is
+        # set, otherwise falls back to transcript-based picking.
+        from gemini_selector import select_frames
+        video_duration = (
+            transcript[-1]["start"] + transcript[-1].get("duration", 0)
+            if transcript else 0.0
+        )
+        selections = select_frames(
+            url,
+            transcript,
+            transcript_model=FRAME_SELECTION_MODEL,
+            gemini_model=GEMINI_MODEL,
             max_frames=FRAME_SELECTION_MAX,
             min_interval=FRAME_SELECTION_MIN_INTERVAL,
             chapters=chapters,
             focus=focus,
             time_range=time_range,
             timestamps=timestamps,
+            video_duration=video_duration,
+            media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
         )
 
         # Extract targeted frames
@@ -276,10 +292,11 @@ def extract_slides(
     """
     Extract presentation-quality slides from a YouTube video.
 
-    Analyzes the transcript to find moments where complete diagrams,
-    charts, code, or summaries are shown on screen, then extracts
-    those frames as PNG images. Faster and cheaper than extract_video
-    — only uses a cheap text model for selection, no Vision API.
+    Gemini watches the video to find moments where a complete,
+    self-contained visual is on screen (diagram, chart, scene, code,
+    summary), then ffmpeg extracts those frames as PNG images. Faster
+    and cheaper than extract_video — frame selection only, no Claude
+    Vision descriptions.
 
     Use this when the user needs visual aids, key screenshots, or
     a slide deck from a video.
@@ -354,17 +371,26 @@ def extract_slides(
                 "message": "No transcript available for this video. Cannot select slides.",
             })
 
-        # Select slide-worthy moments
-        from transcript_selector import select_slides_from_transcript
-        selections = select_slides_from_transcript(
-            transcript=transcript,
-            model=FRAME_SELECTION_MODEL,
+        # Select slide-worthy moments — Gemini watches the video when a key is
+        # set, otherwise falls back to transcript-based picking.
+        from gemini_selector import select_slides
+        video_duration = (
+            transcript[-1]["start"] + transcript[-1].get("duration", 0)
+            if transcript else 0.0
+        )
+        selections = select_slides(
+            url,
+            transcript,
+            transcript_model=FRAME_SELECTION_MODEL,
+            gemini_model=GEMINI_MODEL,
             max_slides=SLIDE_SELECTION_MAX,
             min_interval=SLIDE_SELECTION_MIN_INTERVAL,
             chapters=chapters,
             focus=focus,
             time_range=time_range,
             timestamps=timestamps,
+            video_duration=video_duration,
+            media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
         )
 
         if not selections:

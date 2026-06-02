@@ -53,3 +53,15 @@ MAX_INLINE_TRANSCRIPT_CHARS = 100000
 # max_tokens scales with the number of frames in it so descriptions are not cut
 # off mid-sentence (previously a flat 2000 for up to 8 frames ≈ 250 tokens/frame).
 FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME = 1024
+
+# ── Gemini frame selection ────────────────────────────────────────────────────
+# When GEMINI_API_KEY is set, Gemini watches the actual video to pick frames
+# (sees the pixels) instead of guessing from the transcript. ffmpeg still extracts
+# the chosen frames as PNGs. Falls back to transcript-based selection when no key.
+# gemini-3.5-flash gives sharper, more precise picks; fall back to "gemini-2.5-flash"
+# if your key lacks access to it.
+GEMINI_MODEL = "gemini-3.5-flash"
+
+# Low media resolution ≈ 100 tokens/sec of video (vs ~300 at default) — much
+# cheaper and plenty for locating moments. Set False for finer visual detail.
+GEMINI_MEDIA_RESOLUTION_LOW = True

@@ -2,7 +2,7 @@
 Transcript-driven frame selection.
 
 Analyzes a video transcript with Claude (text-only, cheap) to identify
-timestamps where the instructor is showing something visually important.
+timestamps where something visually important is being shown.
 Returns targeted timestamps instead of blind time-based sampling.
 """
 
@@ -205,9 +205,9 @@ def select_frames_from_transcript(
     client = anthropic.Anthropic()
 
     system_prompt = (
-        "You are analyzing the transcript of an instructional screen-recording video "
-        "to identify moments where a screenshot would help understand the visual content. "
-        "The video shows charts, diagrams, and annotations — no webcam."
+        "You are analyzing the transcript of a video to identify moments where a "
+        "screenshot would help capture something visually important being shown or "
+        "discussed."
     )
 
     chapters_section = ""
@@ -216,8 +216,8 @@ def select_frames_from_transcript(
             f"\n\nThe video has the following chapters:\n"
             f"{_format_chapters(chapters)}\n"
             f"IMPORTANT: Always capture a frame near the END of each chapter — "
-            f"this is when the instructor's final annotation, completed zone, or "
-            f"summary for that section is fully visible on screen.\n"
+            f"this is when the completed visual or summary for that section is most "
+            f"fully visible on screen.\n"
         )
 
     focus_section = ""
@@ -240,20 +240,19 @@ def select_frames_from_transcript(
         )
 
     user_prompt = (
-        f"Here is the transcript of a {int(video_duration)}-second instructional video. "
-        f"Identify up to {max_frames} timestamps where the instructor is showing something "
-        f"visually important that would require a screenshot to understand.\n\n"
+        f"Here is the transcript of a {int(video_duration)}-second video. "
+        f"Identify up to {max_frames} timestamps where something visually important is "
+        f"being shown that would require a screenshot to understand.\n\n"
         f"Focus on moments where:\n"
-        f"- A new chart, diagram, or example appears on screen\n"
-        f"- The instructor points to, circles, or highlights specific visual elements\n"
-        f"- Key patterns, zones, levels, or formations are being described\n"
-        f"- Step-by-step visual walkthroughs transition to a new step\n"
-        f"- Before/after comparisons are shown\n"
-        f"- The instructor uses words like 'here', 'this', 'look', 'see', 'notice' "
-        f"while describing something on screen\n"
-        f"- **A topic or section is wrapping up** — the completed chart/diagram/zone is "
-        f"fully drawn and the instructor is summarizing or transitioning to the next topic. "
-        f"These end-of-section frames capture the final, complete visual.\n"
+        f"- A new object, scene, chart, diagram, or example appears on screen\n"
+        f"- The speaker points to, shows, or highlights something specific\n"
+        f"- A key action, step, result, or visual detail is being demonstrated\n"
+        f"- A walkthrough transitions to a new step\n"
+        f"- Before/after or comparison visuals are shown\n"
+        f"- The speaker uses words like 'here', 'this', 'look', 'see', 'notice', 'watch' "
+        f"while referring to something on screen\n"
+        f"- **A topic or section is wrapping up** — the visual for that part is complete "
+        f"and the speaker is summarizing or moving on. These capture the final, full visual.\n"
         f"{chapters_section}"
         f"{focus_section}"
         f"{time_range_section}\n"
@@ -321,10 +320,9 @@ def select_slides_from_transcript(
     client = anthropic.Anthropic()
 
     system_prompt = (
-        "You are analyzing the transcript of an instructional video to identify "
-        "moments where the screen shows a COMPLETE visual that would work as a "
-        "standalone slide in a presentation deck. The video shows charts, diagrams, "
-        "code, and annotations."
+        "You are analyzing the transcript of a video to identify moments where the "
+        "screen shows a COMPLETE, self-contained visual that would work as a strong "
+        "standalone image or slide."
     )
 
     chapters_section = ""
@@ -356,27 +354,27 @@ def select_slides_from_transcript(
         )
 
     user_prompt = (
-        f"Here is the transcript of a {int(video_duration)}-second instructional video. "
-        f"Identify up to {max_slides} timestamps where the screen shows a COMPLETE "
-        f"visual that would make a good standalone presentation slide.\n\n"
+        f"Here is the transcript of a {int(video_duration)}-second video. "
+        f"Identify up to {max_slides} timestamps where the screen shows a COMPLETE, "
+        f"self-contained visual that would make a strong standalone image or slide.\n\n"
         f"Select moments where:\n"
-        f"- A diagram, chart, or illustration is FULLY DRAWN and COMPLETE (not "
-        f"mid-animation or mid-drawing). Prefer the moment just AFTER the instructor "
-        f"finishes building a visual, not while they are still adding to it.\n"
-        f"- Text, labels, or titles are clearly visible and would be readable as a slide.\n"
-        f"- A key concept, definition, formula, or summary is displayed on screen.\n"
-        f"- A code snippet or configuration is fully shown (not partially scrolled).\n"
-        f"- A comparison table, list of steps, or structured information is complete.\n"
-        f"- A section title or topic header is shown (good for slide deck dividers).\n\n"
+        f"- A diagram, chart, scene, or illustration is FULLY FORMED and COMPLETE (not "
+        f"mid-animation or mid-transition). Prefer the moment just AFTER a visual finishes "
+        f"forming, not while it is still changing.\n"
+        f"- Text, labels, or titles are clearly visible and readable.\n"
+        f"- A key idea, definition, result, or summary is displayed on screen.\n"
+        f"- On-screen code or configuration is fully shown (not partially scrolled).\n"
+        f"- A table, list of steps, or structured information is complete.\n"
+        f"- A section title or topic header is shown (good as a divider).\n\n"
         f"AVOID selecting moments where:\n"
-        f"- The instructor is mid-drawing or mid-typing (visual is incomplete).\n"
+        f"- A visual is still forming, drawing, or typing (incomplete).\n"
         f"- The screen is transitioning between views.\n"
-        f"- The content is a near-duplicate of an already-selected slide.\n"
-        f"- The visual is too zoomed-in to be self-explanatory without narration.\n\n"
-        f"For each selection, the 'reason' should describe what the slide would "
-        f"communicate as a standalone visual (e.g. 'Complete architecture diagram "
-        f"showing 3-tier system' not 'instructor is drawing a diagram').\n\n"
-        f"Prioritize DIVERSITY of content — a good slide deck covers all major topics.\n"
+        f"- The content is a near-duplicate of an already-selected moment.\n"
+        f"- The shot is too zoomed-in to be self-explanatory without narration.\n\n"
+        f"For each selection, the 'reason' should describe what the image would "
+        f"communicate on its own (e.g. 'Finished architecture diagram of a 3-tier system' "
+        f"not 'someone is drawing a diagram').\n\n"
+        f"Prioritize DIVERSITY — cover all the major moments and topics.\n"
         f"{chapters_section}"
         f"{focus_section}"
         f"{time_range_section}\n"
