@@ -40,7 +40,7 @@ def gemini_available() -> bool:
         return False
 
 
-def _response_schema():
+def _frame_schema():
     from google.genai import types
     return types.Schema(
         type=types.Type.ARRAY,
@@ -95,7 +95,9 @@ def _build_prompt(purpose: str, max_items: int, focus: str) -> str:
     return body
 
 
-def _call_gemini(youtube_url, model, prompt, parsed_range, media_resolution_low):
+def _call_gemini(youtube_url, model, prompt, parsed_range, media_resolution_low, response_schema=None):
+    """Run one Gemini call over a YouTube URL and return the JSON text. Shared by
+    frame selection and whole-video analysis (each passes its own response_schema)."""
     from google import genai
     from google.genai import types
 
@@ -114,7 +116,7 @@ def _call_gemini(youtube_url, model, prompt, parsed_range, media_resolution_low)
     )
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
-        response_schema=_response_schema(),
+        response_schema=response_schema or _frame_schema(),
         media_resolution=(
             types.MediaResolution.MEDIA_RESOLUTION_LOW
             if media_resolution_low

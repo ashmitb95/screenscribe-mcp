@@ -62,7 +62,9 @@ from frame_extractor import extract_frames, extract_frames_at_timestamps
 from session import (
     frames_dir as session_frames_dir,
     list_sessions,
+    load_analysis,
     load_session,
+    save_analysis,
     save_session,
     session_dir,
     session_exists,
@@ -324,6 +326,7 @@ def cmd_ask(args):
         question=args.question,
         context=context,
         model=SYNTHESIS_MODEL,
+        analysis=load_analysis(args.session_id),
     )
 
     print(answer)
@@ -336,6 +339,54 @@ def cmd_ask(args):
             "context_sources": args.context or [],
             "answer": answer,
         }) + "\n")
+
+
+# ── analyze ───────────────────────────────────────────────────────────────────
+
+def cmd_analyze(args):
+    from gemini_analyzer import analyze_video_with_gemini, gemini_available
+
+    if not gemini_available():
+        print("ERROR: `analyze` needs GEMINI_API_KEY — Gemini watches the whole video.")
+        sys.exit(1)
+
+    video_id = extract_video_id(args.url)
+    s_dir = session_dir(video_id)
+
+    if load_analysis(video_id) is not None and not args.force:
+        print(f"Analysis already exists for {video_id}. Use --force to regenerate.")
+        print(f"  Ask:  python main.py ask {video_id} \"your question\"")
+        return
+
+    print(f"Analyzing the whole video with Gemini ({GEMINI_MODEL})...")
+    analysis = analyze_video_with_gemini(
+        args.url, GEMINI_MODEL, focus=args.focus, time_range=args.time_range,
+        media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
+    )
+    save_analysis(video_id, analysis)
+
+    # Fetch the transcript (free) so the session is queryable with text too;
+    # create a session only if one doesn't already exist (don't clobber frames).
+    s_dir.mkdir(parents=True, exist_ok=True)
+    if not session_exists(video_id):
+        try:
+            transcript = fetch_transcript(video_id, s_dir)
+        except Exception:
+            transcript = []
+        duration = 0.0
+        if transcript:
+            last = transcript[-1]
+            duration = last["start"] + last.get("duration", 0)
+        save_session(
+            video_id=video_id, url=args.url, title=get_video_title(args.url),
+            duration=duration, transcript=transcript, frame_descriptions=[], frames=[],
+        )
+
+    print(f"\n  Session : {video_id}")
+    print(f"  Summary : {analysis.get('summary', '')[:300]}")
+    print(f"  {len(analysis.get('sections', []))} sections, "
+          f"{len(analysis.get('key_moments', []))} key moments")
+    print(f"\n  Ask:  python main.py ask {video_id} \"your question\"")
 
 
 # ── sessions ──────────────────────────────────────────────────────────────────
@@ -522,6 +573,17 @@ def main():
     p_slides.add_argument("--timestamps", type=str, default="",
                           help="Extract at exact timestamps, bypass AI selection (e.g. '5:30,10:00')")
 
+    # analyze
+    p_analyze = sub.add_parser("analyze",
+                               help="Gemini watches the whole video → structured analysis (cheap, no frames)")
+    p_analyze.add_argument("url", help="YouTube URL")
+    p_analyze.add_argument("--focus", type=str, default="",
+                           help="Focus the analysis on a specific subject")
+    p_analyze.add_argument("--time-range", type=str, default="",
+                           help="Restrict to time range: START-END in seconds or MM:SS")
+    p_analyze.add_argument("--force", action="store_true",
+                           help="Regenerate even if an analysis already exists")
+
     # sessions
     sub.add_parser("sessions", help="List all processed videos")
 
@@ -531,6 +593,8 @@ def main():
         cmd_extract(args)
     elif args.command == "ask":
         cmd_ask(args)
+    elif args.command == "analyze":
+        cmd_analyze(args)
     elif args.command == "slides":
         cmd_slides(args)
     elif args.command == "sessions":

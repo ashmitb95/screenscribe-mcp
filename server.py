@@ -6,8 +6,10 @@ frames and answers questions), with a free transcript layer alongside.
 
 Exposes tools to any MCP client (Claude Code, Claude Desktop, etc.):
   extract_transcript(url)    — fast: fetch transcript only (no API cost)
+  analyze_video(url)         — cheap: Gemini watches the whole video → structured analysis
   extract_video(url)         — full: Gemini picks frames, ffmpeg extracts, Claude Vision describes
   extract_slides(url)        — Gemini picks complete on-screen visuals, extracted as PNGs
+  get_video_analysis(id)     — read Gemini's whole-video analysis
   get_session(session_id)    — return session data with analysis source metadata
   list_sessions()            — list all processed videos
 
@@ -66,7 +68,9 @@ from frame_extractor import extract_frames_at_timestamps
 from session import (
     frames_dir as session_frames_dir,
     list_sessions as _list_sessions,
+    load_analysis,
     load_session,
+    save_analysis,
     save_session,
     session_dir,
     session_exists,
@@ -448,6 +452,101 @@ def extract_slides(
 
 
 @mcp.tool()
+def analyze_video(url: str, focus: str = "", time_range: str = "") -> str:
+    """
+    Whole-video visual analysis with Gemini — cheap and fast. Gemini watches the
+    entire video and returns a structured understanding: a summary, a section/
+    topic breakdown with timestamps, the key moments (with what is on screen),
+    and notable on-screen text/data. No download, no frame extraction, no Claude
+    Vision pass.
+
+    This is the sweet spot between extract_transcript (free, words only) and
+    extract_video (frames described by Claude Vision): whole-video visual
+    coverage for a fraction of the cost. Use it to summarise, outline, or answer
+    "what is shown / what happens" questions. Use extract_video / extract_slides
+    only when you need the actual frame images saved on disk.
+
+    Optional:
+    - focus: pay special attention to a subject (e.g. "the demo", "pricing").
+    - time_range: restrict to a portion, "START-END" in seconds or MM:SS.
+
+    Returns: session_id; read the full analysis with get_video_analysis.
+    """
+    video_id = _extract_video_id(url)
+    has_custom = bool(focus or time_range)
+
+    if load_analysis(video_id) is not None and not has_custom:
+        return json.dumps({
+            "status": "already_analyzed",
+            "session_id": video_id,
+            "message": f"Analysis already exists. Use get_video_analysis('{video_id}').",
+        })
+
+    try:
+        from gemini_analyzer import analyze_video_with_gemini, gemini_available
+        if not gemini_available():
+            return json.dumps({
+                "status": "error",
+                "message": "analyze_video requires GEMINI_API_KEY (Gemini watches the video).",
+            })
+
+        analysis = analyze_video_with_gemini(
+            url, GEMINI_MODEL, focus=focus, time_range=time_range,
+            media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
+        )
+        if not has_custom:
+            save_analysis(video_id, analysis)
+
+        # Ensure a session exists (with transcript) so get_session/ask can use it.
+        if not session_exists(video_id):
+            s_dir = session_dir(video_id)
+            s_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                transcript = fetch_transcript(video_id, s_dir)
+            except Exception:
+                transcript = []
+            duration = 0.0
+            if transcript:
+                last = transcript[-1]
+                duration = last["start"] + last.get("duration", 0)
+            save_session(
+                video_id=video_id, url=url, title=_get_title(url),
+                duration=duration, transcript=transcript,
+                frame_descriptions=[], frames=[],
+            )
+
+        resp = {
+            "status": "success",
+            "session_id": video_id,
+            "summary": analysis.get("summary", ""),
+            "section_count": len(analysis.get("sections", [])),
+            "key_moment_count": len(analysis.get("key_moments", [])),
+            "message": f"Analyzed. Read the full analysis with get_video_analysis('{video_id}').",
+        }
+        if has_custom:
+            resp["analysis"] = analysis  # one-off (not cached) — return inline
+        return json.dumps(resp)
+    except ValueError as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
+def get_video_analysis(session_id: str) -> str:
+    """
+    Return Gemini's structured whole-video analysis for a session — summary,
+    sections (with timestamps), key moments, and on-screen text — if
+    analyze_video has been run for it.
+    """
+    analysis = load_analysis(session_id)
+    if analysis is None:
+        return json.dumps({
+            "error": f"No Gemini analysis for '{session_id}'.",
+            "hint": "Run analyze_video(url) first.",
+        })
+    return json.dumps({"session_id": session_id, "analysis": analysis})
+
+
+@mcp.tool()
 def get_session(session_id: str) -> str:
     """
     Return the full processed content of a video session:
@@ -476,6 +575,7 @@ def get_session(session_id: str) -> str:
     full_transcript = " ".join(seg["text"] for seg in session["transcript"])
     frame_descriptions = session.get("frame_descriptions", [])
     frames = session.get("frames", [])
+    gemini_analysis = load_analysis(session_id)
 
     # Build analysis source metadata
     if frame_descriptions:
@@ -487,10 +587,15 @@ def get_session(session_id: str) -> str:
                 for f in frames
             ],
         }
+    elif gemini_analysis:
+        analysis_source = {
+            "type": "transcript + Gemini whole-video analysis",
+            "note": "Gemini watched the whole video; see gemini_analysis for the visual content.",
+        }
     else:
         analysis_source = {
             "type": "transcript only",
-            "note": "No visual/frame analysis was performed. Answers are based solely on the transcript.",
+            "note": "No visual analysis was performed. Answers are based solely on the transcript.",
         }
 
     # Return the full transcript inline. Only when it exceeds a generous cap do
@@ -507,6 +612,7 @@ def get_session(session_id: str) -> str:
         "frame_count": session.get("frame_count", 0),
         "extracted_at": session.get("extracted_at", ""),
         "analysis_source": analysis_source,
+        "gemini_analysis": gemini_analysis,
         "frame_descriptions": frame_descriptions,
         "transcript": transcript_inline,
         "transcript_chars": len(full_transcript),

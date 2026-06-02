@@ -32,6 +32,26 @@ def slides_dir(video_id: str) -> Path:
     return session_dir(video_id) / "slides"
 
 
+def analysis_file(video_id: str) -> Path:
+    return session_dir(video_id) / "gemini_analysis.json"
+
+
+def save_analysis(video_id: str, analysis: dict) -> Path:
+    """Persist Gemini's whole-video analysis. Returns the path."""
+    path = analysis_file(video_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(analysis, indent=2))
+    return path
+
+
+def load_analysis(video_id: str) -> dict | None:
+    """Load Gemini's whole-video analysis, or None if it hasn't been produced."""
+    path = analysis_file(video_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
 def save_session(
     video_id: str,
     url: str,

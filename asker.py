@@ -15,11 +15,32 @@ the answer specific to the user's project.
 import anthropic
 
 
+def _format_analysis(a: dict) -> str:
+    """Render Gemini's whole-video analysis as readable text for the prompt."""
+    parts = []
+    if a.get("summary"):
+        parts.append(f"Summary: {a['summary']}")
+    if a.get("sections"):
+        parts.append("Sections:\n" + "\n".join(
+            f"  [{s.get('start', '')}] {s.get('title', '')} — {s.get('summary', '')}"
+            for s in a["sections"]
+        ))
+    if a.get("key_moments"):
+        parts.append("Key moments:\n" + "\n".join(
+            f"  [{m.get('timestamp', '')}] {m.get('description', '')}"
+            for m in a["key_moments"]
+        ))
+    if a.get("on_screen_text"):
+        parts.append("On-screen text/data: " + " | ".join(str(t) for t in a["on_screen_text"]))
+    return "\n\n".join(parts)
+
+
 def ask(
     session: dict,
     question: str,
     context: str,
     model: str,
+    analysis: dict | None = None,
 ) -> str:
     """
     Send a question to Claude with the video session as knowledge base.
@@ -34,7 +55,13 @@ def ask(
     sections = []
 
     has_frames = bool(frame_descriptions)
-    mode_label = "full (transcript + visual)" if has_frames else "transcript-only"
+    has_analysis = bool(analysis)
+    if has_frames:
+        mode_label = "full (transcript + visual frames)"
+    elif has_analysis:
+        mode_label = "transcript + Gemini video analysis"
+    else:
+        mode_label = "transcript-only"
 
     sections.append(
         f"You have access to a processed video:\n"
@@ -43,6 +70,13 @@ def ask(
         f"  Duration: {session.get('duration', 0):.0f}s  |  "
         f"Mode: {mode_label}"
     )
+
+    if has_analysis:
+        sections.append(
+            f"GEMINI WHOLE-VIDEO ANALYSIS\n"
+            f"{'─' * 40}\n"
+            f"{_format_analysis(analysis)}"
+        )
 
     if has_frames:
         all_descriptions = "\n\n".join(

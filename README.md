@@ -23,8 +23,8 @@ The tool gives you a spectrum: start with transcript-only (fast, free), upgrade 
 
 ## What it does
 
-1. **Extracts** a video's transcript, key frames, or presentation slides — choose the level of analysis you need
-2. **Describes** each frame with a vision-capable LLM, cross-referenced against the transcript
+1. **Analyzes** a video at the depth you need — transcript, a cheap whole-video Gemini analysis, key frames, or presentation slides
+2. **Describes** each extracted frame with a vision-capable LLM, cross-referenced against the transcript
 3. **Persists** a session at `~/.video-analyzer/{video_id}/` — runs once, cached forever
 4. **Answers** any free-form question about the video, optionally with your own files as context
 
@@ -41,6 +41,19 @@ ffmpeg extracts Gemini's chosen timestamps, snapping each forward to the moment 
 
 A lightweight **transcript layer** runs alongside the pair: fetch a video's transcript instantly and for free (handy for quick agentic lookups over MCP), and — if no Gemini key is configured — fall back to transcript-based frame selection so the tool still works.
 
+### Levels of analysis
+
+Pick the depth you need — they get cheaper to more expensive, lighter to heavier:
+
+| Level | Command / tool | Cost | What you get |
+| ----- | -------------- | ---- | ------------ |
+| Transcript | `extract --transcript-only` / `extract_transcript` | free | the words, no visuals |
+| **Whole-video analysis** | **`analyze` / `analyze_video`** | **~$0.03** | **Gemini watches the entire video → summary, timestamped sections, key moments, on-screen text — no frames, no download** |
+| Frames | `extract` / `extract_video` | ~$0.50–1 | the above *plus* the actual key frames as PNGs, each described by Claude Vision |
+| Slides | `slides` / `extract_slides` | ~$0.03 | complete on-screen visuals saved as standalone PNG images |
+
+`analyze` is usually the sweet spot: whole-video visual understanding for the price of a transcript. Reach for `extract`/`slides` when you specifically need the frame **images** on disk.
+
 ---
 
 ## Architecture
@@ -54,6 +67,7 @@ video-analyzer/
 ├── downloader.py          yt-dlp video download + youtube-transcript-api fetch
 ├── frame_extractor.py     ffmpeg extraction + snap-to-stable + perceptual dedup
 ├── gemini_selector.py     Gemini watches the video to pick frames (primary)
+├── gemini_analyzer.py     Gemini whole-video structured analysis (analyze tier)
 ├── transcript_selector.py Transcript-based frame/slide selection (fallback)
 ├── session.py             Session persistence at ~/.video-analyzer/
 ├── context.py             Universal context loader (files, dirs, URLs, stdin)
@@ -142,6 +156,14 @@ Options:
 --resume            Resume from last completed step
 ```
 
+### Analyze a whole video (cheap, no frames)
+
+```bash
+python main.py analyze "https://youtu.be/dQw4w9WgXcQ"
+```
+
+Gemini watches the entire video and produces a structured analysis — summary, timestamped sections, key moments, and on-screen text — saved to `~/.video-analyzer/{id}/gemini_analysis.json`. No download or frame extraction. Then `ask` uses it as a source. Options: `--focus`, `--time-range`, `--force`.
+
 ### Extract presentation slides
 
 ```bash
@@ -192,9 +214,11 @@ Works with: Claude Code, Cursor, Windsurf, Continue, custom MCP agents, or any c
 | Tool                      | Description                                                                                                  |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `extract_transcript(url)` | Fetch transcript only — fast, free, no API cost. Default for most questions.                                 |
-| `extract_video(url)`      | Full visual processing — download, extract frames, describe with Vision. Use when visual analysis is needed. |
+| `analyze_video(url)`        | Gemini watches the whole video → structured analysis (summary, sections, key moments). Cheap; no frames.    |
+| `extract_video(url)`      | Full visual processing — Gemini picks frames, ffmpeg extracts, Claude Vision describes. When you need the images. |
 | `extract_slides(url)`     | Extract presentation-quality slide frames. Returns paths to PNGs on disk.                                    |
-| `get_session(session_id)` | Return session content with `analysis_source` metadata (transcript-only vs transcript+video).                |
+| `get_video_analysis(id)`  | Read Gemini's whole-video analysis for a session.                                                            |
+| `get_session(session_id)` | Return session content (transcript, frame descriptions, Gemini analysis) with `analysis_source` metadata.    |
 | `list_sessions()`         | List all processed videos.                                                                                   |
 
 The client picks the right tool based on context. For most questions `extract_transcript` is sufficient; `extract_video` when visual analysis is needed; `extract_slides` for screenshots or a deck.
@@ -263,8 +287,8 @@ Open your MCP client inside any project, then ask naturally:
 
 The client will:
 
-1. Call `extract_transcript(url)` or `extract_video(url)` depending on what's needed — cached after the first run
-2. Call `get_session(id)` — loads transcript (+ frame descriptions if available), with `analysis_source` metadata indicating what data the answer is based on
+1. Call `extract_transcript(url)`, `analyze_video(url)`, or `extract_video(url)` depending on what's needed — cached after the first run
+2. Call `get_session(id)` — loads transcript (+ Gemini analysis and frame descriptions if available), with `analysis_source` metadata indicating what data the answer is based on
 3. Read your project files for context
 4. Answer your question, citing whether it drew from transcript alone or transcript + visual analysis
 
