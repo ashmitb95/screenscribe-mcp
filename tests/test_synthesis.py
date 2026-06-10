@@ -192,3 +192,28 @@ def test_synthesize_pass_whole_set_no_category(monkeypatch, tmp_path):
     assert out["status"] == "success"
     assert out["category"] == "all"
     assert set(out["added"]) == {"a", "b"}
+
+
+# ── CLI + MCP surface ─────────────────────────────────────────────────────────
+
+def test_mcp_synthesis_tools_registered():
+    from screenscribe.server import mcp
+    tools = set(mcp._tool_manager._tools)
+    assert {"synthesize_categorize", "synthesize_pass"} <= tools
+    assert len(tools) == 9
+
+
+def test_cli_synthesize_pass_plumbing(monkeypatch, capsys):
+    import types
+    import screenscribe.main as m
+    monkeypatch.setattr(syn, "synthesize_pass", lambda *a, **k: {
+        "status": "success", "category": "all", "added": ["v1"], "extraction_failed": [],
+        "passes_so_far": 1, "truncated": False, "aggregate": {"x": 1}, "aggregate_key": "k",
+    })
+    args = types.SimpleNamespace(source="src", category="", item_schema="recipe",
+                                 aggregate_schema="cookbook", top_n=5, focus="",
+                                 force=False, media_res="low")
+    m.cmd_synthesize_pass(args)
+    cap = capsys.readouterr()
+    assert json.loads(cap.out) == {"x": 1}     # aggregate → stdout (pipeable)
+    assert "added=1" in cap.err                # summary → stderr

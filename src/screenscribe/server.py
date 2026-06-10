@@ -12,6 +12,8 @@ Exposes tools to any MCP client (Claude Code, Claude Desktop, etc.):
   extract_frames(url, style) — Gemini picks moments, ffmpeg extracts PNGs the agent views
                                (style="keyframes" | "slides")
   extract_structured(url, schema) — extract typed JSON against a schema/preset
+  synthesize_categorize(url) — discover categories from a channel/playlist's titles (cheap)
+  synthesize_pass(url, ...)  — fold top-N of a category into a compounding aggregate
   get_video_analysis(id)     — read Gemini's whole-video analysis
   get_session(session_id)    — return session data (transcript, analysis, frame paths)
   list_sessions()            — list all processed videos
@@ -485,6 +487,52 @@ def extract_structured(url: str, schema: str, focus: str = "", time_range: str =
     except ValueError as e:
         return json.dumps({"status": "error", "message": str(e), "presets": list_presets()})
     return json.dumps(result)
+
+
+@mcp.tool()
+def synthesize_categorize(url: str) -> str:
+    """
+    Discover dish/topic categories from a channel or playlist's video titles — one
+    cheap classification pass, cached per source. Read-only: no extraction, no cost
+    beyond a single text call. Use this FIRST to show the user the category buckets
+    (with counts) before running any paid synthesis pass.
+
+    Returns: {categories:[{name,count,video_ids}], by_id, ranked, total}.
+    Needs GEMINI_API_KEY. Best for channel/playlist URLs (needs titles to classify).
+    """
+    from screenscribe.synthesis import categorize
+    return json.dumps(categorize(url))
+
+
+@mcp.tool()
+def synthesize_pass(
+    url: str,
+    item_schema: str,
+    aggregate_schema: str,
+    category: str = "",
+    top_n: int = 20,
+    focus: str = "",
+) -> str:
+    """
+    Fold the top-N videos of `category` (or the whole resolved set if `category` is
+    empty) into a compounding, persisted aggregate that conforms to `aggregate_schema`.
+
+    Resolves the source, extracts each video with `item_schema` (cached per video),
+    and merges the new results into the running aggregate for (source, aggregate_schema).
+    Call repeatedly — once per category — to grow the artifact; each pass is bounded
+    by `top_n`, so it scales to a whole channel. One video's failure is isolated.
+
+    item_schema / aggregate_schema: a preset name or an inline JSON Schema string.
+    Requires GEMINI_API_KEY. Run synthesize_categorize first to pick a category.
+    """
+    from screenscribe.synthesis import synthesize_pass as _synth_pass
+    try:
+        return json.dumps(_synth_pass(
+            url, category or None, item_schema=item_schema,
+            aggregate_schema=aggregate_schema, top_n=top_n, focus=focus,
+        ))
+    except ValueError as e:
+        return json.dumps({"status": "error", "message": str(e)})
 
 
 @mcp.tool()
