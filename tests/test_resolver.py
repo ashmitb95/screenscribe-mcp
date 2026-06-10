@@ -144,3 +144,23 @@ def test_channel_root_normalized_to_videos_feed(monkeypatch):
     monkeypatch.setattr(resolver, "_flat_extract", capture)
     resolve_videos("https://www.youtube.com/@manashirRanna")
     assert seen["url"].endswith("/videos")
+
+
+def test_channel_surfaces_per_video_stubs(monkeypatch):
+    monkeypatch.setattr(resolver, "_flat_extract", lambda url: _canned([
+        {"id": "v1", "title": "Veg Curry", "duration": 600, "view_count": 1000},
+        {"id": "v2", "title": "Fish Fry", "duration": 700, "view_count": 5000},
+    ]))
+    out = resolve_videos("https://www.youtube.com/@chan")
+    assert out["videos"] == [
+        {"id": "v1", "title": "Veg Curry", "duration": 600, "view_count": 1000},
+        {"id": "v2", "title": "Fish Fry", "duration": 700, "view_count": 5000},
+    ]
+
+
+def test_single_and_list_stubs_have_none_metadata():
+    assert resolve_videos("https://youtu.be/aaaaaaaaaaa")["videos"] == [
+        {"id": "aaaaaaaaaaa", "title": None, "duration": None, "view_count": None}
+    ]
+    out = resolve_videos(["https://youtu.be/aaaaaaaaaaa"])
+    assert out["videos"][0]["id"] == "aaaaaaaaaaa" and out["videos"][0]["title"] is None

@@ -17,7 +17,7 @@ build/
 output/
 
 # Local planning / dogfooding artifacts — kept on disk, never committed
-docs/superpowers/
+docs/
 *-recipe.md
 
 # Editor
