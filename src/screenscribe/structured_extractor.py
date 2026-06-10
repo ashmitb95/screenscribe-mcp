@@ -160,3 +160,62 @@ def extract_structured(
     cache.write_text(json.dumps({"schema": schema, "data": data}, indent=2))
     return {"status": "success", "session_id": video_id, "key": key,
             "cached": False, "data": data}
+
+
+def extract_structured_batch(
+    source,
+    schema_arg,
+    *,
+    max_videos: int | None = None,
+    min_duration: int = 0,
+    focus="",
+    time_range="",
+    force=False,
+    model=GEMINI_MODEL,
+    media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
+) -> dict:
+    """
+    Cross-video fan-out: resolve `source` (single URL / channel / playlist / list of
+    URLs) to videos, then run extract_structured over each against `schema_arg`.
+
+    The per-(video, schema) cache makes re-runs free. One video's failure never
+    aborts the batch — it lands in `failed` and the rest proceed. This is the
+    substrate cross-video synthesis aggregates over.
+
+    Returns:
+      {
+        "kind", "source", "schema_key",
+        "total_videos",                 # videos resolved (after resolver filtering/cap)
+        "succeeded": [{video_id, data, cached}],
+        "failed":    [{video_id, status, error}],
+        "resolver_skipped": {too_short, unavailable},
+        "resolver_total_found",         # qualifying videos before any max_videos cap
+      }
+    """
+    from screenscribe.resolver import resolve_videos
+
+    resolved = resolve_videos(source, max_videos=max_videos, min_duration=min_duration)
+    key = schema_key(schema_arg)
+
+    succeeded, failed = [], []
+    for video_id in resolved["video_ids"]:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        result = extract_structured(
+            url, schema_arg, focus=focus, time_range=time_range, force=force,
+            model=model, media_resolution_low=media_resolution_low,
+        )
+        if result.get("status") == "success":
+            succeeded.append({"video_id": video_id, "data": result["data"], "cached": result["cached"]})
+        else:
+            failed.append({"video_id": video_id, "status": result.get("status"), "error": result.get("error")})
+
+    return {
+        "kind": resolved["kind"],
+        "source": source,
+        "schema_key": key,
+        "total_videos": len(resolved["video_ids"]),
+        "succeeded": succeeded,
+        "failed": failed,
+        "resolver_skipped": resolved["skipped"],
+        "resolver_total_found": resolved["total_found"],
+    }

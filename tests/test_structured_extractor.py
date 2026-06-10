@@ -164,3 +164,47 @@ def test_extract_structured_requires_gemini(monkeypatch, tmp_path):
     monkeypatch.setattr(gs, "gemini_available", lambda: False)
     out = se.extract_structured("https://youtu.be/abc123", _OBJ_SCHEMA)
     assert out["status"] == "error"
+
+
+# ── batch fan-out (extract over resolved videos) ─────────────────────────────
+
+import screenscribe.resolver as _rv
+
+
+def test_batch_fans_out_and_isolates_failures(monkeypatch):
+    monkeypatch.setattr(_rv, "resolve_videos", lambda source, **k: {
+        "kind": "list", "source": source, "video_ids": ["a", "b", "c"],
+        "title": None, "skipped": {"too_short": 1, "unavailable": 0}, "total_found": 3,
+    })
+    calls = []
+
+    def fake_extract(url, schema, **k):
+        calls.append(url)
+        vid = url.split("v=")[-1]
+        if vid == "b":
+            return {"status": "invalid", "key": "k", "error": "bad", "raw": "{}"}
+        return {"status": "success", "session_id": vid, "key": "k", "cached": False, "data": {"n": 1}}
+
+    monkeypatch.setattr(se, "extract_structured", fake_extract)
+    out = se.extract_structured_batch("any-source", {"type": "object"})
+
+    assert out["kind"] == "list"
+    assert out["total_videos"] == 3
+    assert len(calls) == 3                                   # one extraction per video
+    assert [s["video_id"] for s in out["succeeded"]] == ["a", "c"]
+    assert [f["video_id"] for f in out["failed"]] == ["b"]   # failure isolated, run continues
+    assert out["resolver_skipped"]["too_short"] == 1
+    assert out["resolver_total_found"] == 3
+
+
+def test_batch_passes_cached_flag_through(monkeypatch):
+    monkeypatch.setattr(_rv, "resolve_videos", lambda source, **k: {
+        "kind": "video", "source": source, "video_ids": ["x"],
+        "title": None, "skipped": {"too_short": 0, "unavailable": 0}, "total_found": 1,
+    })
+    monkeypatch.setattr(se, "extract_structured", lambda url, schema, **k: {
+        "status": "success", "session_id": "x", "key": "k", "cached": True, "data": {"ok": 1},
+    })
+    out = se.extract_structured_batch("https://youtu.be/x", "cli_commands")
+    assert out["succeeded"][0]["cached"] is True
+    assert out["succeeded"][0]["data"] == {"ok": 1}
