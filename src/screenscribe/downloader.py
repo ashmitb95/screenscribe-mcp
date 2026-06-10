@@ -4,6 +4,8 @@ from pathlib import Path
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
+from screenscribe.ffmpeg_paths import ffmpeg_dir
+
 _ytt = YouTubeTranscriptApi()
 
 
@@ -17,6 +19,12 @@ def download_video(url: str, output_dir: Path) -> tuple[Path, str, list[dict]]:
         "quiet": False,
         "no_warnings": False,
     }
+
+    # bestvideo+bestaudio makes yt-dlp merge streams with ffmpeg; point it at the
+    # bundled binary so a download works with no system ffmpeg installed.
+    ff_dir = ffmpeg_dir()
+    if ff_dir:
+        ydl_opts["ffmpeg_location"] = ff_dir
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)

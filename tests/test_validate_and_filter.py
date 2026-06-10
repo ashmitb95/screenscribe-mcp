@@ -9,12 +9,7 @@ These lock in two behaviors that were previously broken:
      earliest-in-time ones.
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from transcript_selector import _validate_and_filter
+from screenscribe.transcript_selector import _validate_and_filter
 
 
 def _ts(selections):

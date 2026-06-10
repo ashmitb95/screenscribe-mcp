@@ -4,13 +4,9 @@ so these run with no GEMINI_API_KEY and no API calls.
 """
 
 import json
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import gemini_selector
-from gemini_selector import parse_gemini_selections, select_frames, select_with_gemini
+from screenscribe import gemini_selector
+from screenscribe.gemini_selector import parse_gemini_selections, select_frames, select_with_gemini
 
 
 def test_parse_handles_mmss_seconds_and_hms():

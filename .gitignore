@@ -5,6 +5,11 @@ __pycache__/
 *.pyo
 .Python
 
+# Packaging build artifacts
+dist/
+build/
+*.egg-info/
+
 # Secrets
 .env
 

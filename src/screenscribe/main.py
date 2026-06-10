@@ -1,5 +1,5 @@
 """
-video-analyzer v0.2
+screenscribe v0.2
 
 Commands:
   extract <url>              Process a video once — downloads, extracts frames,
@@ -12,35 +12,34 @@ Commands:
   sessions                   List all processed videos.
 
 Examples:
-  python main.py extract "https://youtu.be/RnP08K2SAZs"
-  python main.py extract "https://youtu.be/RnP08K2SAZs" --transcript-only
-  python main.py extract "https://youtu.be/RnP08K2SAZs" --focus "architecture diagrams"
-  python main.py extract "https://youtu.be/RnP08K2SAZs" --time-range "5:00-15:00"
-  python main.py slides "https://youtu.be/RnP08K2SAZs"
-  python main.py slides "https://youtu.be/RnP08K2SAZs" --focus "code examples"
-  python main.py slides "https://youtu.be/RnP08K2SAZs" --timestamps "5:30,10:00,22:15"
-  python main.py ask RnP08K2SAZs "What is the entry trigger?"
-  python main.py ask RnP08K2SAZs "implement this as a BaseStrategy" \\
+  screenscribe extract "https://youtu.be/RnP08K2SAZs"
+  screenscribe extract "https://youtu.be/RnP08K2SAZs" --transcript-only
+  screenscribe extract "https://youtu.be/RnP08K2SAZs" --focus "architecture diagrams"
+  screenscribe extract "https://youtu.be/RnP08K2SAZs" --time-range "5:00-15:00"
+  screenscribe slides "https://youtu.be/RnP08K2SAZs"
+  screenscribe slides "https://youtu.be/RnP08K2SAZs" --focus "code examples"
+  screenscribe slides "https://youtu.be/RnP08K2SAZs" --timestamps "5:30,10:00,22:15"
+  screenscribe ask RnP08K2SAZs "What is the entry trigger?"
+  screenscribe ask RnP08K2SAZs "implement this as a BaseStrategy" \\
       --context ~/algo-bot/backend/core/strategy.py \\
       --context ~/algo-bot/backend/core/liquidity_detector.py
-  python main.py ask RnP08K2SAZs "how does this relate?" --stdin < my_notes.md
-  python main.py sessions
+  screenscribe ask RnP08K2SAZs "how does this relate?" --stdin < my_notes.md
+  screenscribe sessions
 """
 
 import argparse
 import json
 import re
 import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent / ".env")
+load_dotenv()
 
 import yt_dlp
 
-from analyzer import describe_frames
-from asker import ask as ask_session
-from config import (
+from screenscribe.analyzer import describe_frames
+from screenscribe.asker import ask as ask_session
+from screenscribe.config import (
     CLAUDE_MODEL,
     FRAME_SELECTION_MAX,
     FRAME_SELECTION_MIN_INTERVAL,
@@ -56,10 +55,10 @@ from config import (
     SYNTHESIS_MODEL,
     TRANSCRIPT_WINDOW,
 )
-from context import load_context
-from downloader import download_video, fetch_transcript
-from frame_extractor import extract_frames, extract_frames_at_timestamps
-from session import (
+from screenscribe.context import load_context
+from screenscribe.downloader import download_video, fetch_transcript
+from screenscribe.frame_extractor import extract_frames, extract_frames_at_timestamps
+from screenscribe.session import (
     frames_dir as session_frames_dir,
     list_sessions,
     load_analysis,
@@ -69,7 +68,7 @@ from session import (
     session_dir,
     session_exists,
 )
-from gemini_selector import select_frames, select_slides
+from screenscribe.gemini_selector import select_frames, select_slides
 
 
 def extract_video_id(url: str) -> str:
@@ -114,7 +113,7 @@ def cmd_extract(args):
         steps = "3"
 
     print(f"\n{'=' * 44}")
-    print(f"  video-analyzer extract")
+    print(f"  screenscribe extract")
     print(f"  Video ID : {video_id}")
     print(f"  Session  : {s_dir}")
     if transcript_only:
@@ -135,7 +134,7 @@ def cmd_extract(args):
 
     if session_exists(video_id) and not args.force and not args.resume:
         print(f"Session already exists. Use --force to re-extract.")
-        print(f"Run: python main.py ask {video_id} \"your question\"")
+        print(f"Run: screenscribe ask {video_id} \"your question\"")
         return
 
     # ── Transcript-only mode ──────────────────────────────────────────────
@@ -166,7 +165,7 @@ def cmd_extract(args):
         print(f"  {session_path}")
         print(f"  Transcript: {len(transcript)} segments, {duration:.0f}s")
         print(f"\n  Now ask anything:")
-        print(f"  python main.py ask {video_id} \"your question\"")
+        print(f"  screenscribe ask {video_id} \"your question\"")
         print(f"{'=' * 44}\n")
         return
 
@@ -301,7 +300,7 @@ def cmd_extract(args):
     print(f"  DONE — session saved")
     print(f"  {session_path}")
     print(f"\n  Now ask anything:")
-    print(f"  python main.py ask {video_id} \"your question\"")
+    print(f"  screenscribe ask {video_id} \"your question\"")
     print(f"{'=' * 44}\n")
 
 
@@ -344,7 +343,7 @@ def cmd_ask(args):
 # ── analyze ───────────────────────────────────────────────────────────────────
 
 def cmd_analyze(args):
-    from gemini_analyzer import analyze_video_with_gemini, gemini_available
+    from screenscribe.gemini_analyzer import analyze_video_with_gemini, gemini_available
 
     if not gemini_available():
         print("ERROR: `analyze` needs GEMINI_API_KEY — Gemini watches the whole video.")
@@ -355,7 +354,7 @@ def cmd_analyze(args):
 
     if load_analysis(video_id) is not None and not args.force:
         print(f"Analysis already exists for {video_id}. Use --force to regenerate.")
-        print(f"  Ask:  python main.py ask {video_id} \"your question\"")
+        print(f"  Ask:  screenscribe ask {video_id} \"your question\"")
         return
 
     print(f"Analyzing the whole video with Gemini ({GEMINI_MODEL})...")
@@ -386,7 +385,7 @@ def cmd_analyze(args):
     print(f"  Summary : {analysis.get('summary', '')[:300]}")
     print(f"  {len(analysis.get('sections', []))} sections, "
           f"{len(analysis.get('key_moments', []))} key moments")
-    print(f"\n  Ask:  python main.py ask {video_id} \"your question\"")
+    print(f"\n  Ask:  screenscribe ask {video_id} \"your question\"")
 
 
 # ── sessions ──────────────────────────────────────────────────────────────────
@@ -394,7 +393,7 @@ def cmd_analyze(args):
 def cmd_sessions(_args):
     sessions = list_sessions()
     if not sessions:
-        print("No sessions found. Run: python main.py extract <url>")
+        print("No sessions found. Run: screenscribe extract <url>")
         return
 
     print(f"\n{'─' * 60}")
@@ -417,7 +416,7 @@ def cmd_slides(args):
     has_custom_params = bool(args.focus or args.time_range or args.timestamps)
 
     print(f"\n{'=' * 44}")
-    print(f"  video-analyzer slides")
+    print(f"  screenscribe slides")
     print(f"  Video ID : {video_id}")
     print(f"  Session  : {s_dir}")
     print(f"  Max      : {args.max_slides} slides")
@@ -521,7 +520,7 @@ def cmd_slides(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="video-analyzer",
+        prog="screenscribe",
         description="Turn instructional videos into queryable knowledge sessions.",
     )
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")

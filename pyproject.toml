@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "screenscribe-mcp"
+version = "0.2.0"
+description = "Turn instructional videos into queryable knowledge — CLI + MCP server, powered by Gemini (watches the video) and Claude (describes frames, answers questions)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = [
+    "youtube", "video", "transcript", "mcp", "model-context-protocol",
+    "gemini", "claude", "ai", "video-analysis", "screen-recording",
+]
+dependencies = [
+    "yt-dlp",
+    "youtube-transcript-api",
+    "anthropic",
+    "Pillow",
+    "mcp[cli]",
+    "python-dotenv",
+    "google-genai",
+    "static-ffmpeg",
+]
+
+[project.scripts]
+screenscribe = "screenscribe.main:main"
+screenscribe-mcp = "screenscribe.server:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/screenscribe"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

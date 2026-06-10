@@ -86,7 +86,7 @@ def load_session(video_id: str) -> dict:
     if not path.exists():
         raise FileNotFoundError(
             f"No session found for '{video_id}'.\n"
-            f"Run:  video-analyzer extract <url>"
+            f"Run:  screenscribe extract <url>"
         )
     return json.loads(path.read_text())
 

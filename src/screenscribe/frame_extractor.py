@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from screenscribe.ffmpeg_paths import ffmpeg_bin, ffprobe_bin
+
 # If scene detection yields fewer frames than this, fill gaps with evenly-spaced
 # time-based samples so the LLM still sees the full video.
 MIN_FRAMES_FALLBACK = 15
@@ -82,7 +84,7 @@ def detect_scene_changes(video_path: Path, threshold: float) -> list[float]:
     ffmpeg writes showinfo output to stderr — we parse pts_time from there.
     """
     cmd = [
-        "ffmpeg",
+        ffmpeg_bin(),
         "-i", str(video_path),
         "-vf", f"select='gt(scene,{threshold})',showinfo",
         "-vsync", "vfr",
@@ -121,7 +123,7 @@ def extract_frame(video_path: Path, timestamp: float, output_path: Path, max_wid
     Resizes to max_width if the frame is wider. Returns True if successful.
     """
     cmd = [
-        "ffmpeg",
+        ffmpeg_bin(),
         "-ss", str(timestamp),
         "-i", str(video_path),
         "-vframes", "1",
@@ -148,7 +150,7 @@ def extract_frame(video_path: Path, timestamp: float, output_path: Path, max_wid
 def get_video_duration(video_path: Path) -> float:
     """Return video duration in seconds using ffprobe."""
     cmd = [
-        "ffprobe", "-v", "error",
+        ffprobe_bin(), "-v", "error",
         "-show_entries", "format=duration",
         "-of", "default=noprint_wrappers=1:nokey=1",
         str(video_path),

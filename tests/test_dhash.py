@@ -4,14 +4,9 @@ detect a settled screen. These build images with Pillow directly, so they need
 no ffmpeg or video.
 """
 
-import os
-import sys
-
 from PIL import Image, ImageDraw
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from frame_extractor import DEDUP_HAMMING, dhash, hamming
+from screenscribe.frame_extractor import DEDUP_HAMMING, dhash, hamming
 
 
 def _gradient(path, shift=0):

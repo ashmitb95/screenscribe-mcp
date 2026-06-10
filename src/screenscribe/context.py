@@ -60,7 +60,7 @@ def _load_one(source: str) -> str:
 
 def _load_url(url: str) -> str:
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "video-analyzer/0.2"})
+        req = urllib.request.Request(url, headers={"User-Agent": "screenscribe/0.2"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
         # Strip HTML tags crudely if it looks like HTML

@@ -1,8 +1,8 @@
-# video-analyzer
+# screenscribe
 
 **Turn any video into something your agent can act on.**
 
-The best how-to knowledge — live demos, conference talks, tutorials, walkthroughs — is trapped in video: you can watch it, but you can't *use* it. video-analyzer pulls what's actually on screen (code, diagrams, steps, data) into structured, queryable knowledge and hands it to an LLM or agent as a first-class input. So "watch this 20-minute tutorial" becomes "here's exactly what it shows — now do it."
+The best how-to knowledge — live demos, conference talks, tutorials, walkthroughs — is trapped in video: you can watch it, but you can't *use* it. screenscribe pulls what's actually on screen (code, diagrams, steps, data) into structured, queryable knowledge and hands it to an LLM or agent as a first-class input. So "watch this 20-minute tutorial" becomes "here's exactly what it shows — now do it."
 
 **Gemini watches the video; Claude describes the frames and answers.** Standalone CLI + MCP server (Claude Code, Cursor, Windsurf, any MCP client).
 
@@ -34,7 +34,7 @@ It's a spectrum: start free with the transcript, add a cheap whole-video analysi
 
 ## How it works
 
-video-analyzer is built on two models, each doing what it's best at:
+screenscribe is built on two models, each doing what it's best at:
 
 - **Gemini — sees the video.** The YouTube URL is handed to Gemini, which natively watches the video (frames + audio) and returns the precise timestamps where something visually important is on screen. This is what makes frame selection accurate and content-agnostic — it works on any video, not just screen recordings. Cheap (~$0.02–0.05 per video at low media resolution) and fast.
 - **Claude — describes and reasons.** A Claude vision model describes each extracted frame; a Claude model answers your questions using the transcript, the frame descriptions, and any project files you inject.
@@ -61,20 +61,23 @@ Pick the depth you need — they get cheaper to more expensive, lighter to heavi
 ## Architecture
 
 ```
-video-analyzer/
-├── main.py                CLI — extract / slides / ask / sessions subcommands
-├── server.py              MCP server — 5 tools for any MCP client
-├── analyzer.py            Vision LLM describes frames in batches
-├── asker.py               LLM answers questions with session + context
-├── downloader.py          yt-dlp video download + youtube-transcript-api fetch
-├── frame_extractor.py     ffmpeg extraction + snap-to-stable + perceptual dedup
-├── gemini_selector.py     Gemini watches the video to pick frames (primary)
-├── gemini_analyzer.py     Gemini whole-video structured analysis (analyze tier)
-├── transcript_selector.py Transcript-based frame/slide selection (fallback)
-├── session.py             Session persistence at ~/.video-analyzer/
-├── context.py             Universal context loader (files, dirs, URLs, stdin)
-├── config.py              Model names, thresholds, batch sizes
-├── requirements.txt
+screenscribe/
+├── pyproject.toml         Package metadata + console scripts (screenscribe, screenscribe-mcp)
+├── src/screenscribe/
+│   ├── main.py            CLI — extract / analyze / slides / ask / sessions subcommands
+│   ├── server.py          MCP server — 7 tools for any MCP client
+│   ├── analyzer.py        Vision LLM describes frames in batches
+│   ├── asker.py           LLM answers questions with session + context
+│   ├── downloader.py      yt-dlp video download + youtube-transcript-api fetch
+│   ├── frame_extractor.py ffmpeg extraction + snap-to-stable + perceptual dedup
+│   ├── ffmpeg_paths.py    Resolves ffmpeg/ffprobe — system binary, else bundled static-ffmpeg
+│   ├── gemini_selector.py Gemini watches the video to pick frames (primary)
+│   ├── gemini_analyzer.py Gemini whole-video structured analysis (analyze tier)
+│   ├── transcript_selector.py Transcript-based frame/slide selection (fallback)
+│   ├── session.py         Session persistence at ~/.video-analyzer/
+│   ├── context.py         Universal context loader (files, dirs, URLs, stdin)
+│   └── config.py          Model names, thresholds, batch sizes
+├── tests/
 ├── .env.example
 └── .gitignore
 ```
@@ -92,42 +95,54 @@ video-analyzer/
 
 ---
 
-## Prerequisites
+## Quick start
 
-- Python 3.11+
-- `ffmpeg`
+Requires [`uv`](https://docs.astral.sh/uv/) (or plain `pip`). **No `ffmpeg` install needed** — a static binary is fetched automatically the first time it's required (your system `ffmpeg` is used instead if you have one).
 
-**Linux/WSL:**
-
-```bash
-sudo apt update && sudo apt install ffmpeg
-```
-
-**macOS:**
+**Try it in 10 seconds, no API key:**
 
 ```bash
-brew install ffmpeg
+# Transcript only — fast, free, no key, no video download
+uvx screenscribe extract "https://youtu.be/dQw4w9WgXcQ" --transcript-only
+uvx screenscribe sessions
 ```
 
----
+**Add keys for the visual tiers.** screenscribe reads them from your shell environment first, so if you already export them, nothing else to do:
 
-## Setup
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...   # Claude — frame descriptions + answering
+export GEMINI_API_KEY=...             # Gemini — watches the video to pick frames
+
+uvx screenscribe analyze "https://youtu.be/dQw4w9WgXcQ"   # whole-video analysis (~$0.03)
+```
+
+It degrades gracefully: with only `ANTHROPIC_API_KEY` it still works, falling back to transcript-based frame selection. For the full experience, set both. ([Get a Gemini key](https://aistudio.google.com/apikey).)
+
+> A `.env` file in the working directory also works — handy for project-local keys. Shell-exported keys take precedence over `.env`.
+
+**Add to your agent as an MCP server (one line):**
+
+```bash
+claude mcp add screenscribe -- uvx screenscribe-mcp
+```
+
+(Other clients: see [Register the MCP server](#register-the-mcp-server) below.)
+
+<details>
+<summary><b>Run from source (development)</b></summary>
 
 ```bash
 git clone git@github.com:ashmitb95/video-analyzer-llm.git
 cd video-analyzer-llm
+python3 -m venv venv && source venv/bin/activate
+pip install -e .
 
-python3 -m venv venv
-source venv/bin/activate          # Windows WSL: same command
-pip install -r requirements.txt
-
-cp .env.example .env
-# Edit .env — add both keys:
-# ANTHROPIC_API_KEY=sk-ant-...   # Claude — frame descriptions + answering
-# GEMINI_API_KEY=...             # Gemini — watches the video to pick frames
+cp .env.example .env   # add your keys, or export them in your shell
+screenscribe sessions
+pytest
 ```
 
-The tool degrades gracefully: with only `ANTHROPIC_API_KEY` it still works, falling back to transcript-based frame selection. For the full experience, set both.
+</details>
 
 ---
 
@@ -138,14 +153,14 @@ The tool degrades gracefully: with only `ANTHROPIC_API_KEY` it still works, fall
 Two modes, from lightest to heaviest:
 
 ```bash
-source venv/bin/activate
-
 # Transcript only — fast, free, no video download
-python main.py extract "https://youtu.be/dQw4w9WgXcQ" --transcript-only
+screenscribe extract "https://youtu.be/dQw4w9WgXcQ" --transcript-only
 
 # Full extraction — downloads video, extracts frames, describes with Vision
-python main.py extract "https://youtu.be/dQw4w9WgXcQ"
+screenscribe extract "https://youtu.be/dQw4w9WgXcQ"
 ```
+
+(Prefix any command with `uvx ` to run without installing, e.g. `uvx screenscribe extract …`.)
 
 Options:
 
@@ -161,7 +176,7 @@ Options:
 ### Analyze a whole video (cheap, no frames)
 
 ```bash
-python main.py analyze "https://youtu.be/dQw4w9WgXcQ"
+screenscribe analyze "https://youtu.be/dQw4w9WgXcQ"
 ```
 
 Gemini watches the entire video and produces a structured analysis — summary, timestamped sections, key moments, and on-screen text — saved to `~/.video-analyzer/{id}/gemini_analysis.json`. No download or frame extraction. Then `ask` uses it as a source. Options: `--focus`, `--time-range`, `--force`.
@@ -169,7 +184,7 @@ Gemini watches the entire video and produces a structured analysis — summary, 
 ### Extract presentation slides
 
 ```bash
-python main.py slides "https://youtu.be/dQw4w9WgXcQ"
+screenscribe slides "https://youtu.be/dQw4w9WgXcQ"
 ```
 
 Identifies complete, self-contained visuals — diagrams, scenes, charts, code, key moments, summaries — that would work as standalone images. Extracts them into `~/.video-analyzer/{id}/slides/`.
@@ -184,15 +199,15 @@ Options:
 ### Ask anything about a video
 
 ```bash
-python main.py ask <session_id> "What are the main concepts covered?"
+screenscribe ask <session_id> "What are the main concepts covered?"
 
 # Inject your own project files as context:
-python main.py ask <session_id> "Implement the pattern from the video" \
+screenscribe ask <session_id> "Implement the pattern from the video" \
     --context ./src/app.py \
     --context ./src/utils/
 
 # Pipe in notes via stdin:
-python main.py ask <session_id> "Compare with my notes" --stdin < notes.md
+screenscribe ask <session_id> "Compare with my notes" --stdin < notes.md
 ```
 
 `--context` accepts: file paths, directory paths, HTTP/HTTPS URLs, or raw text strings. Repeatable.
@@ -200,14 +215,14 @@ python main.py ask <session_id> "Compare with my notes" --stdin < notes.md
 ### List all sessions
 
 ```bash
-python main.py sessions
+screenscribe sessions
 ```
 
 ---
 
 ## MCP server
 
-The MCP server exposes video-analyzer as a set of tools that any MCP-compatible client can call. The server handles video knowledge; the client provides conversation context.
+The MCP server exposes screenscribe as a set of tools that any MCP-compatible client can call. The server handles video knowledge; the client provides conversation context.
 
 Works with: Claude Code, Cursor, Windsurf, Continue, custom MCP agents, or any client that speaks the [Model Context Protocol](https://modelcontextprotocol.io).
 
@@ -227,48 +242,42 @@ The client picks the right tool based on context. For most questions `extract_tr
 
 ### Register the MCP server
 
-Add the server to your MCP client's config. Examples for common clients:
+No paths, no venv, no JSON surgery — `uvx` runs the published package on demand.
 
-**Claude Code** (`~/.claude.json`):
+**Claude Code** (one line):
 
-```json
-"mcpServers": {
-  "video-analyzer": {
-    "command": "/path/to/video-analyzer-llm/venv/bin/python",
-    "args": ["/path/to/video-analyzer-llm/server.py"]
-  }
-}
+```bash
+claude mcp add screenscribe -- uvx screenscribe-mcp
 ```
 
-**Cursor** (`.cursor/mcp.json` in your project):
+**Cursor / Windsurf / Continue** (`.cursor/mcp.json` or your client's MCP config):
 
 ```json
 {
   "mcpServers": {
-    "video-analyzer": {
-      "command": "/path/to/video-analyzer-llm/venv/bin/python",
-      "args": ["/path/to/video-analyzer-llm/server.py"]
+    "screenscribe": {
+      "command": "uvx",
+      "args": ["screenscribe-mcp"]
     }
   }
 }
 ```
 
-**WSL** (MCP client running on Windows, server on Linux):
+Pass keys through if your client doesn't inherit your shell environment — add an `"env"` block:
 
 ```json
-"mcpServers": {
-  "video-analyzer": {
-    "command": "wsl",
-    "args": [
-      "-d", "Ubuntu-24.04",
-      "/home/<you>/projects/video-analyzer-llm/venv/bin/python",
-      "/home/<you>/projects/video-analyzer-llm/server.py"
-    ]
+{
+  "mcpServers": {
+    "screenscribe": {
+      "command": "uvx",
+      "args": ["screenscribe-mcp"],
+      "env": { "ANTHROPIC_API_KEY": "sk-ant-...", "GEMINI_API_KEY": "..." }
+    }
   }
 }
 ```
 
-The server loads `ANTHROPIC_API_KEY` from the `.env` file automatically. Restart your client after updating the config.
+The server reads `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` from the environment (or a `.env` in the working directory). Restart your client after updating the config.
 
 ### Example usage
 
@@ -296,7 +305,7 @@ The client will:
 
 ---
 
-## Configuration (`config.py`)
+## Configuration (`src/screenscribe/config.py`)
 
 | Setting                        | Default             | Description                                                   |
 | ------------------------------ | ------------------- | ------------------------------------------------------------- |
@@ -316,7 +325,7 @@ The client will:
 | `MAX_INLINE_TRANSCRIPT_CHARS`  | `100000`            | Max transcript chars `get_session` returns inline before pointing to the file instead. `None` = unlimited. |
 | `FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME` | `1024`    | Output token budget per frame for vision descriptions (scales with batch size).      |
 
-Models are configurable in `config.py`. Frame descriptions and answering use Anthropic's Claude; frame *selection* uses Gemini when a key is set (otherwise a Claude text model on the transcript).
+Models are configurable in `src/screenscribe/config.py`. Frame descriptions and answering use Anthropic's Claude; frame *selection* uses Gemini when a key is set (otherwise a Claude text model on the transcript).
 
 ---
 
@@ -338,6 +347,6 @@ These commands make **no** API calls and need no key:
 
 - Works on **any kind of video** — selection and descriptions are content-agnostic. Use a question's `focus` (or the `--focus` flag) to steer toward a specific subject when you want to.
 - `get_session` returns the **full transcript** (no silent truncation). For very long videos it returns a preview plus a `transcript_path` to the on-disk file and a `transcript_truncated` flag, rather than dropping data silently.
-- Sessions are **machine-local** (`~/.video-analyzer/`). Cloning the repo on a new machine means re-running `extract` once per video.
+- Sessions are **machine-local** (`~/.video-analyzer/`). Installing on a new machine means re-running `extract` once per video.
 - The `output/` directory in the project root is legacy and ignored by git. All current session data lives at `~/.video-analyzer/`.
 - `youtube-transcript-api` v1.2.4+ uses an instance-based API: `YouTubeTranscriptApi().fetch(video_id)`. If you see `AttributeError: get_transcript`, you're on an old version — `pip install -U youtube-transcript-api`.

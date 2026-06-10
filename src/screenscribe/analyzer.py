@@ -11,7 +11,7 @@ import time
 
 import anthropic
 
-from config import FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME
+from screenscribe.config import FRAME_DESCRIPTION_MAX_TOKENS_PER_FRAME
 
 MAX_RETRIES = 5
 INITIAL_BACKOFF = 2.0  # seconds

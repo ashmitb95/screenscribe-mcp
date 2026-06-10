@@ -17,7 +17,7 @@ import json
 import os
 import time
 
-from transcript_selector import (
+from screenscribe.transcript_selector import (
     _parse_time_range,
     _parse_timestamp,
     _validate_and_filter,

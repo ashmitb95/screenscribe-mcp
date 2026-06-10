@@ -4,13 +4,9 @@ so these run with no GEMINI_API_KEY and no API calls.
 """
 
 import json
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import gemini_analyzer
-from gemini_analyzer import analyze_video_with_gemini, parse_gemini_analysis
+from screenscribe import gemini_analyzer
+from screenscribe.gemini_analyzer import analyze_video_with_gemini, parse_gemini_analysis
 
 
 def test_parse_normalizes_timestamps_to_seconds():

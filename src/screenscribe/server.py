@@ -1,5 +1,5 @@
 """
-video-analyzer MCP server.
+screenscribe MCP server.
 
 Built on Gemini (watches the video to pick frames) + Claude (describes
 frames and answers questions), with a free transcript layer alongside.
@@ -14,17 +14,19 @@ Exposes tools to any MCP client (Claude Code, Claude Desktop, etc.):
   list_sessions()            — list all processed videos
 
 Claude Code usage:
-  Add to ~/.claude.json or settings:
+  claude mcp add screenscribe -- uvx screenscribe-mcp
+
+  Or add to ~/.claude.json directly:
     {
       "mcpServers": {
-        "video-analyzer": {
-          "command": "/path/to/video-analyzer-llm/venv/bin/python",
-          "args": ["/path/to/video-analyzer-llm/server.py"],
+        "screenscribe": {
+          "command": "uvx",
+          "args": ["screenscribe-mcp"],
           "env": { "ANTHROPIC_API_KEY": "sk-ant-...", "GEMINI_API_KEY": "..." }
         }
       }
     }
-  (The server also auto-loads both keys from the project .env.)
+  (Keys are also read from the shell environment / a .env in the working dir.)
 
 Then in Claude Code, just mention a YouTube URL — Claude will call
 extract_video automatically if needed, then use get_session to answer
@@ -32,24 +34,15 @@ questions with full repo context.
 """
 
 import json
-import sys
-from pathlib import Path
+import re
 
-# Add project dir to path so imports work when run directly
-_HERE = Path(__file__).parent
-sys.path.insert(0, str(_HERE))
-
-# Load .env from the project directory (picks up ANTHROPIC_API_KEY)
-try:
-    from dotenv import load_dotenv
-    load_dotenv(_HERE / ".env")
-except ImportError:
-    pass
+from dotenv import load_dotenv
+load_dotenv()
 
 from mcp.server.fastmcp import FastMCP
 
-from analyzer import describe_frames
-from config import (
+from screenscribe.analyzer import describe_frames
+from screenscribe.config import (
     CLAUDE_MODEL,
     FRAME_SELECTION_MAX,
     FRAME_SELECTION_MIN_INTERVAL,
@@ -63,9 +56,9 @@ from config import (
     SLIDE_SELECTION_MIN_INTERVAL,
     TRANSCRIPT_WINDOW,
 )
-from downloader import download_video, fetch_transcript
-from frame_extractor import extract_frames_at_timestamps
-from session import (
+from screenscribe.downloader import download_video, fetch_transcript
+from screenscribe.frame_extractor import extract_frames_at_timestamps
+from screenscribe.session import (
     frames_dir as session_frames_dir,
     list_sessions as _list_sessions,
     load_analysis,
@@ -77,9 +70,7 @@ from session import (
     slides_dir as session_slides_dir,
 )
 
-import re
-
-mcp = FastMCP("video-analyzer")
+mcp = FastMCP("screenscribe")
 
 
 def _extract_video_id(url: str) -> str:
@@ -220,7 +211,7 @@ def extract_video(
 
         # Identify key visual moments — Gemini watches the video when a key is
         # set, otherwise falls back to transcript-based picking.
-        from gemini_selector import select_frames
+        from screenscribe.gemini_selector import select_frames
         video_duration = (
             transcript[-1]["start"] + transcript[-1].get("duration", 0)
             if transcript else 0.0
@@ -377,7 +368,7 @@ def extract_slides(
 
         # Select slide-worthy moments — Gemini watches the video when a key is
         # set, otherwise falls back to transcript-based picking.
-        from gemini_selector import select_slides
+        from screenscribe.gemini_selector import select_slides
         video_duration = (
             transcript[-1]["start"] + transcript[-1].get("duration", 0)
             if transcript else 0.0
@@ -483,7 +474,7 @@ def analyze_video(url: str, focus: str = "", time_range: str = "") -> str:
         })
 
     try:
-        from gemini_analyzer import analyze_video_with_gemini, gemini_available
+        from screenscribe.gemini_analyzer import analyze_video_with_gemini, gemini_available
         if not gemini_available():
             return json.dumps({
                 "status": "error",
@@ -636,5 +627,10 @@ def list_sessions() -> str:
     return json.dumps({"sessions": sessions})
 
 
-if __name__ == "__main__":
+def run():
+    """Console-script entry point for the MCP server."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    run()

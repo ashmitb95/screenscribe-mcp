@@ -12,8 +12,8 @@ Saved as <session>/gemini_analysis.json and queryable via get_video_analysis.
 
 import json
 
-from gemini_selector import _call_gemini, gemini_available  # noqa: F401 (re-exported for callers)
-from transcript_selector import _parse_time_range, _parse_timestamp
+from screenscribe.gemini_selector import _call_gemini, gemini_available  # noqa: F401 (re-exported for callers)
+from screenscribe.transcript_selector import _parse_time_range, _parse_timestamp
 
 
 def _analysis_schema():
