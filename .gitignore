@@ -16,6 +16,10 @@ build/
 # Session data (stored globally at ~/.video-analyzer/, not in repo)
 output/
 
+# Local planning / dogfooding artifacts — kept on disk, never committed
+docs/superpowers/
+*-recipe.md
+
 # Editor
 .vscode/
 .idea/
