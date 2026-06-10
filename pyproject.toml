@@ -21,6 +21,7 @@ dependencies = [
     "python-dotenv",
     "google-genai",
     "static-ffmpeg",
+    "jsonschema",
 ]
 
 [project.scripts]
