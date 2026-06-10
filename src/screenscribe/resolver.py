@@ -88,8 +88,16 @@ def resolve_videos(source, *, max_videos: int | None = None, min_duration: int =
                   entries with no known duration are KEPT (don't guess).
 
     Returns a ResolveResult dict:
-      {kind, source, video_ids, title, skipped:{too_short, unavailable}, total_found}
+      {kind, source, video_ids, videos:[{id,title,duration,view_count}], title,
+       skipped:{too_short, unavailable}, total_found}
+    `videos` carries per-video stubs (title/view_count populated only for
+    channel/playlist flat enumeration; None for single-video and list inputs).
     """
+    def _stub(vid, e=None):
+        e = e or {}
+        return {"id": vid, "title": e.get("title"),
+                "duration": e.get("duration"), "view_count": e.get("view_count")}
+
     # 1. List input → map each element through the single-video parse.
     if isinstance(source, list):
         seen, ids = set(), []
@@ -101,7 +109,8 @@ def resolve_videos(source, *, max_videos: int | None = None, min_duration: int =
                 seen.add(vid)
                 ids.append(vid)
         return {
-            "kind": "list", "source": source, "video_ids": ids, "title": None,
+            "kind": "list", "source": source, "video_ids": ids,
+            "videos": [_stub(v) for v in ids], "title": None,
             "skipped": {"too_short": 0, "unavailable": 0}, "total_found": len(ids),
         }
 
@@ -112,7 +121,8 @@ def resolve_videos(source, *, max_videos: int | None = None, min_duration: int =
     vid = _parse_video_id(source)
     if vid:
         return {
-            "kind": "video", "source": source, "video_ids": [vid], "title": None,
+            "kind": "video", "source": source, "video_ids": [vid],
+            "videos": [_stub(vid)], "title": None,
             "skipped": {"too_short": 0, "unavailable": 0}, "total_found": 1,
         }
 
@@ -146,11 +156,12 @@ def resolve_videos(source, *, max_videos: int | None = None, min_duration: int =
         if vid in seen:
             continue
         seen.add(vid)
-        qualifying.append(vid)
+        qualifying.append(_stub(vid, e))
 
-    video_ids = qualifying[:max_videos] if max_videos is not None else qualifying
+    stubs = qualifying[:max_videos] if max_videos is not None else qualifying
     return {
-        "kind": kind, "source": source, "video_ids": video_ids, "title": title,
+        "kind": kind, "source": source,
+        "video_ids": [s["id"] for s in stubs], "videos": stubs, "title": title,
         "skipped": {"too_short": too_short, "unavailable": unavailable},
         "total_found": len(qualifying),
     }
