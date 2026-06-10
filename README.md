@@ -1,23 +1,25 @@
 # video-analyzer
 
-Turn YouTube videos into queryable knowledge sessions. **Gemini watches the video** to pick the frames worth capturing; **Claude describes them and answers your questions** — with your own files as context.
+**Turn any video into something your agent can act on.**
 
-Works as a standalone CLI and as an MCP server compatible with any MCP client (Claude Code, Cursor, Windsurf, Continue, custom agents, etc.).
+The best how-to knowledge — live demos, conference talks, tutorials, walkthroughs — is trapped in video: you can watch it, but you can't *use* it. video-analyzer pulls what's actually on screen (code, diagrams, steps, data) into structured, queryable knowledge and hands it to an LLM or agent as a first-class input. So "watch this 20-minute tutorial" becomes "here's exactly what it shows — now do it."
+
+**Gemini watches the video; Claude describes the frames and answers.** Standalone CLI + MCP server (Claude Code, Cursor, Windsurf, any MCP client).
 
 ---
 
-## Why not just paste a transcript into an LLM?
+## Why it matters
 
-You can — and for some videos that's fine. video-analyzer starts there (transcript-only mode is free and instant) but goes further when you need it:
+Transcripts give you the words. The value in technical video is almost always *visual* — the code on screen, the diagram, the UI, the step nobody narrates.
 
-- **It watches the video, not just the words.** Gemini natively watches the video and picks the precise, well-distributed moments where something important is on screen — so frame selection works on any kind of video: lectures, tutorials, demos, talks, cooking, sports, gameplay, interviews, not just screen recordings.
-- **Visual context matters.** Transcripts say "look at this" or "notice that" — without the actual frame, an LLM is guessing. video-analyzer captures the exact moments being referenced and describes them with a vision model, so nothing is lost. Duplicate and near-identical frames are filtered out automatically.
-- **Slide extraction.** Pull out the key completed visuals (diagrams, scenes, code, summaries) as standalone images you can reference or share — something a transcript alone can never give you.
-- **Persistent sessions.** Process a video once, query it forever. No re-pasting, no token waste, no hitting context limits on long videos.
-- **Context injection.** Ask questions with your own project files injected alongside the video knowledge — "implement what this video describes, using my existing interfaces." A raw transcript paste can't do that cleanly.
-- **Source transparency.** Every answer tells you whether it's based on transcript alone or transcript + visual analysis, so you know what you're getting.
+- **Watch → execute.** Point an agent at a tutorial and have it do the thing: *"based on the architecture in this video, refactor my router to match."* The video becomes an input to your build, not a tab you alt-tab to.
+- **Reads what's shown, not just said** — on-screen code, slides, diagrams — via vision models (Gemini watches the video, Claude describes the key frames).
+- **Structured + timestamped output** an agent acts on, not prose to re-digest.
+- **Agent-native** — an MCP server, so video drops straight into your coding loop.
+- **Persistent sessions** — process a video once, query it forever; no re-pasting, no context-limit pain.
+- **Source transparency** — every answer tells you whether it drew from the transcript, the whole-video analysis, or described frames.
 
-The tool gives you a spectrum: start with transcript-only (fast, free), upgrade to visual analysis when the content demands it.
+It's a spectrum: start free with the transcript, add a cheap whole-video analysis, or extract and describe the actual frames when you need the images.
 
 ---
 
