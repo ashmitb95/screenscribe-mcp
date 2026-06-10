@@ -149,6 +149,36 @@ def _call_gemini(youtube_url, model, prompt, parsed_range, media_resolution_low,
     raise last_err
 
 
+def _call_gemini_text(model, prompt, response_json_schema) -> str:
+    """Text-only structured Gemini call (no video upload) returning JSON text.
+    Used by cross-video synthesis to classify titles and to aggregate per-video
+    results. Sibling of _call_gemini; same retry/backoff."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_json_schema=response_json_schema,
+    )
+
+    last_err = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents=types.Content(parts=[types.Part(text=prompt)]),
+                config=config,
+            )
+            return resp.text
+        except Exception as e:  # noqa: BLE001 — surface after retries
+            last_err = e
+            if attempt == MAX_RETRIES:
+                raise
+            time.sleep(INITIAL_BACKOFF * (2 ** (attempt - 1)))
+    raise last_err
+
+
 def parse_gemini_selections(raw_text: str) -> list[dict]:
     """
     Turn Gemini's JSON response into raw [{"timestamp": float, "reason": str}].

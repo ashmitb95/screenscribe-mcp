@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "description": "A cookbook synthesized from many recipe videos, organized into category sections. This is a growable aggregate: new recipes are folded into the matching category, deduplicated by dish.",
+  "properties": {
+    "title": { "type": "string", "description": "A title for the cookbook" },
+    "categories": {
+      "type": "array",
+      "description": "Sections grouping recipes by dish category (e.g. vegetarian, fish, chicken).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Category name" },
+          "recipes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dish": { "type": "string", "description": "Dish name" },
+                "video_id": { "type": "string", "description": "Source video ID" },
+                "ingredients": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Ingredient + quantity lines, e.g. 'Raw mango — 1 medium'"
+                },
+                "steps": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Ordered step descriptions"
+                }
+              },
+              "required": ["dish"]
+            }
+          }
+        },
+        "required": ["name", "recipes"]
+      }
+    }
+  },
+  "required": ["categories"]
+}
