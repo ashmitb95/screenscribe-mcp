@@ -1,126 +1,71 @@
 # screenscribe
 
-**Turn any video into something your agent can act on.**
+**Extract *typed* data from videos — and synthesize across many.**
 
-The best how-to knowledge — live demos, conference talks, tutorials, walkthroughs — is trapped in video: you can watch it, but you can't *use* it. screenscribe pulls what's actually on screen (code, diagrams, steps, data) into structured, queryable knowledge and hands it to an LLM or agent as a first-class input. So "watch this 20-minute tutorial" becomes "here's exactly what it shows — now do it."
+The best how-to knowledge — live demos, conference talks, tutorials, cooking videos — is trapped in video: you can watch it, but you can't *use* it. screenscribe turns it into structured, validated data an agent can act on. Hand it a schema and it fills it from what's on screen *and* said; point it at a whole channel and it synthesizes one coherent artifact across every video.
 
-**Gemini watches the video and picks the key moments; your agent reasons over the frames and transcript.** Standalone CLI + MCP server (Claude Code, Cursor, Windsurf, any MCP client). Needs only a Gemini key — transcript-only mode needs no key at all.
+**Powered by Gemini (it watches the video); your agent does the reasoning.** Standalone CLI + MCP server (Claude Code, Cursor, Windsurf, any MCP client). One key — and transcript-only mode needs none. Works regardless of the video's language and needs no captions.
+
+---
+
+## What it does — three layers
+
+1. **Watch & extract.** Gemini watches the video. Pull the transcript (free), a cheap whole-video analysis, or the key frames as PNG images your agent opens and reads.
+2. **Typed extraction** ⭐ — hand it a **JSON Schema** (or a bundled preset) and get back **validated JSON**: every CLI command shown, the final config file, a recipe with quantities, the code at each step. Prose is for humans to read; this is what an agent automates on.
+3. **Cross-video synthesis** ⭐ — point at a **channel / playlist / list of URLs** → fan the typed extraction out over every video → **compound** the results into one artifact conforming to an *aggregate* schema (a cookbook, a technique grammar, a comparison). It scales past a single context window, one capped batch at a time.
+
+The raw extraction is a commodity (it's Gemini under the hood). The durable value is the **structure** and the **cross-video synthesis** — and both only get better as the models do.
 
 ---
 
 ## Why it matters
 
-Transcripts give you the words. The value in technical video is almost always *visual* — the code on screen, the diagram, the UI, the step nobody narrates.
-
-- **Watch → execute.** Point an agent at a tutorial and have it do the thing: *"based on the architecture in this video, refactor my router to match."* The video becomes an input to your build, not a tab you alt-tab to.
-- **Surfaces what's shown, not just said** — Gemini watches the video (frames + audio) and pulls out the moments that matter; your agent views the extracted frames directly.
-- **Structured + timestamped output** an agent acts on, not prose to re-digest.
-- **Agent-native** — an MCP server, so video drops straight into your coding loop.
-- **Persistent sessions** — process a video once, query it forever; no re-pasting, no context-limit pain.
-- **Source transparency** — `get_session` tells you whether the data is transcript-only, whole-video analysis, or extracted frames.
-
-It's a spectrum: start free with the transcript, add a cheap whole-video analysis, or extract the actual frames when you need the images.
+- **Watch → automate.** *"Extract every command shown in this setup tutorial"* → a typed list your tooling runs. *"Turn mom's whole cooking channel into one cookbook"* → a synthesized artifact, not 300 summaries.
+- **Typed, not prose.** Output validates against your schema; a mismatch retries once, then returns a structured error — never malformed data masquerading as success.
+- **Any language, no captions.** Gemini transcribes the spoken audio *and* reads on-screen text — proven on Bengali cooking videos with zero YouTube captions, and on live-coded music with on-screen code.
+- **Agent-native.** An MCP server, so video drops straight into your coding loop.
+- **Cached + resumable.** Per-`(video, schema)` caching makes re-runs free; synthesis aggregates are persisted and resumable.
 
 ---
 
-## What it does
+## Levels — pick the depth you need
 
-1. **Selects** the moments that matter — Gemini watches the whole video and returns the timestamps where something visually important is on screen.
-2. **Extracts** those moments as PNG frames (ffmpeg), snapped to the settled visual and de-duplicated — images your agent can open and read directly.
-3. **Persists** a session at `~/.video-analyzer/{video_id}/` — runs once, cached forever.
-4. **Hands off to your agent**, which reasons over the transcript, the whole-video analysis, and the frames — answering, generating, or acting.
-
----
-
-## How it works
-
-screenscribe is built on **Gemini**, which natively watches the video (frames + audio):
-
-- **Frame selection.** The YouTube URL is handed to Gemini, which returns the precise timestamps where something visually important is on screen. This makes selection accurate and content-agnostic — it works on any video, not just screen recordings. Cheap (~$0.02–0.05 per video at low media resolution) and fast.
-- **Whole-video analysis.** Gemini can also return a structured understanding of the entire video — summary, timestamped sections, key moments, on-screen text — in one cheap call.
-
-ffmpeg extracts Gemini's chosen timestamps, snapping each forward to the moment the on-screen visual has settled and de-duplicating near-identical frames via perceptual hashing. The resulting PNGs are for **your agent** to view — there's no separate description model in the loop. A free **transcript layer** runs alongside: fetch a video's transcript instantly and for free, no key required.
-
-### Levels of analysis
-
-Pick the depth you need — lighter to heavier:
-
-| Level | Command / tool | Cost | What you get |
-| ----- | -------------- | ---- | ------------ |
-| Transcript | `extract --transcript-only` / `extract_transcript` | free, no key | the words, no visuals |
-| **Whole-video analysis** | **`analyze` / `analyze_video`** | **~$0.03** | **Gemini watches the entire video → summary, timestamped sections, key moments, on-screen text — no frames, no download** |
-| Frames | `extract` / `extract_frames(style="keyframes")` | ~$0.03 | the key frames as PNGs your agent opens and reads |
-| Slides | `slides` / `extract_frames(style="slides")` | ~$0.03 | complete, standalone on-screen visuals as PNGs |
-
-`analyze` is usually the sweet spot: whole-video understanding for the price of a transcript. Reach for `extract`/`slides` when you specifically need the frame **images** on disk for your agent to look at.
-
----
-
-## Architecture
-
-```
-screenscribe/
-├── pyproject.toml         Package metadata + console scripts (screenscribe, screenscribe-mcp)
-├── src/screenscribe/
-│   ├── main.py            CLI — extract / analyze / slides / sessions subcommands
-│   ├── server.py          MCP server — 6 tools for any MCP client
-│   ├── downloader.py      yt-dlp video download + youtube-transcript-api fetch
-│   ├── frame_extractor.py ffmpeg extraction + snap-to-stable + perceptual dedup
-│   ├── ffmpeg_paths.py    Resolves ffmpeg/ffprobe — system binary, else bundled static-ffmpeg
-│   ├── gemini_selector.py Gemini watches the video to pick frames
-│   ├── gemini_analyzer.py Gemini whole-video structured analysis (analyze tier)
-│   ├── transcript_selector.py Selection helpers (timestamp parsing, validate/filter)
-│   ├── session.py         Session persistence at ~/.video-analyzer/
-│   └── config.py          Gemini model + selection thresholds
-├── tests/
-├── .env.example
-└── .gitignore
-```
-
-**Session storage** (global, outside the repo):
-
-```
-~/.video-analyzer/
-└── {video_id}/
-    ├── session.json    # metadata + transcript + extracted frame paths
-    ├── frames/         # extracted PNG key frames (from extract)
-    ├── slides/         # standalone slide frames (from slides)
-    └── video.*         # downloaded video file
-```
+| Layer | CLI / API | Cost | What you get |
+| ----- | --------- | ---- | ------------ |
+| Transcript | `extract --transcript-only` / `extract_transcript` | free, no key | the words |
+| Whole-video analysis | `analyze` / `analyze_video` | ~$0.03 | summary, timestamped sections, key moments, on-screen text |
+| Frames | `extract` / `extract_frames` | ~$0.03 | key frames as PNGs your agent reads |
+| **Typed extraction** ⭐ | `extract-structured` / `extract_structured` | ~$0.03 | **validated JSON conforming to your schema/preset** |
+| **Cross-video synthesis** ⭐ | Python: `synthesize_pass` | ~$0.03 × N | **one compounding artifact across many videos** |
 
 ---
 
 ## Quick start
 
-Requires [`uv`](https://docs.astral.sh/uv/) (or plain `pip`). **No `ffmpeg` install needed** — a static binary is fetched automatically the first time it's required (your system `ffmpeg` is used instead if you have one).
+Requires [`uv`](https://docs.astral.sh/uv/) (or plain `pip`). **No `ffmpeg` install needed** — a static binary is fetched on first use (your system `ffmpeg` is used if present).
 
-**Try it in 10 seconds, no API key:**
+**Try it in 10 seconds, no key:**
 
 ```bash
-# Transcript only — fast, free, no key, no video download
 uvx screenscribe extract "https://youtu.be/dQw4w9WgXcQ" --transcript-only
-uvx screenscribe sessions
 ```
 
-**Add a Gemini key for the visual tiers.** screenscribe reads it from your shell environment first, so if you already export it, nothing else to do:
+**Add a Gemini key for everything visual** (read from your shell env or a `.env`):
 
 ```bash
-export GEMINI_API_KEY=...   # Gemini — watches the video to pick frames + analyze
+export GEMINI_API_KEY=...   # the only key screenscribe needs
 
-uvx screenscribe analyze "https://youtu.be/dQw4w9WgXcQ"   # whole-video analysis (~$0.03)
+# typed extraction — a bundled preset, a schema file, or inline JSON Schema
+uvx screenscribe extract-structured "https://youtu.be/dQw4w9WgXcQ" --schema cli_commands
 ```
 
-That's the only key needed. Transcript mode needs none; everything visual (`extract`, `slides`, `analyze`) needs `GEMINI_API_KEY`. ([Get one from Google AI Studio](https://aistudio.google.com/apikey).)
-
-> A `.env` file in the working directory also works — handy for project-local keys. Shell-exported keys take precedence over `.env`.
+([Get a Gemini key](https://aistudio.google.com/apikey).) Everything visual needs it; transcript mode and explicit `--timestamps` need no key.
 
 **Add to your agent as an MCP server (one line):**
 
 ```bash
 claude mcp add screenscribe -- uvx screenscribe-mcp
 ```
-
-(Other clients: see [Register the MCP server](#register-the-mcp-server) below.)
 
 <details>
 <summary><b>Run from source (development)</b></summary>
@@ -130,9 +75,7 @@ git clone git@github.com:ashmitb95/video-analyzer-llm.git
 cd video-analyzer-llm
 python3 -m venv venv && source venv/bin/activate
 pip install -e .
-
 cp .env.example .env   # add your Gemini key, or export it in your shell
-screenscribe sessions
 pytest
 ```
 
@@ -140,106 +83,82 @@ pytest
 
 ---
 
-## CLI usage
+## Typed extraction
 
-### Extract frames from a video (run once per video)
-
-```bash
-# Transcript only — fast, free, no key, no video download
-screenscribe extract "https://youtu.be/dQw4w9WgXcQ" --transcript-only
-
-# Frames — downloads the video and extracts Gemini-selected key frames as PNGs
-screenscribe extract "https://youtu.be/dQw4w9WgXcQ"
-```
-
-(Prefix any command with `uvx ` to run without installing, e.g. `uvx screenscribe extract …`.)
-
-Options:
-
-```
---transcript-only   Fetch transcript only — no key, no video download or frames
---max-frames 25     Max frames Gemini selects (default 25)
---focus "..."       Focus selection on specific content (e.g. "architecture diagrams")
---time-range 5:00-15:00   Restrict to a portion (seconds or MM:SS)
---timestamps 5:30,10:00   Extract at exact timestamps, bypass AI selection (no key needed)
---force             Re-extract even if session already exists
-```
-
-### Analyze a whole video (cheap, no frames)
+Hand screenscribe a shape, get validated JSON back. `--schema` accepts a **preset name**, a **path** to a `.json` schema, or an **inline JSON Schema** string.
 
 ```bash
-screenscribe analyze "https://youtu.be/dQw4w9WgXcQ"
+# bundled preset
+screenscribe extract-structured "https://youtu.be/<id>" --schema cli_commands
+
+# your own schema file (data → stdout, metadata → stderr, so it pipes)
+screenscribe extract-structured "https://youtu.be/<id>" --schema ./shape.json | jq .
 ```
 
-Gemini watches the entire video and produces a structured analysis — summary, timestamped sections, key moments, and on-screen text — saved to `~/.video-analyzer/{id}/gemini_analysis.json`. No download or frame extraction. Options: `--focus`, `--time-range`, `--force`.
+**Bundled presets:** `cli_commands`, `code_blocks`, `final_config`, `step_sequence`, `resources_mentioned`, `chapters`, `recipe`.
 
-### Extract presentation slides
+- Output is validated against your schema (`jsonschema`); on a mismatch it retries once, then returns `{"status": "invalid", ...}` — never malformed data.
+- Cached per `(video, schema)` — re-running the same extraction is free.
+- Timestamps come back as numeric `seconds`. Schema field descriptions *are* the prompt — make them explicit about the precision you want.
 
-```bash
-screenscribe slides "https://youtu.be/dQw4w9WgXcQ"
+**MCP:** `extract_structured(url, schema, focus="", time_range="")` — `schema` is a preset name or an inline JSON Schema string. Returns the validated `data` (or a structured error).
+
+---
+
+## Cross-video synthesis
+
+Point at a **channel / playlist / list of URLs** and synthesize one artifact across all of it — *schema-driven*, like per-video extraction but for the aggregate. Currently a **Python engine** (a CLI / MCP surface is planned).
+
+```python
+from dotenv import load_dotenv; load_dotenv()          # load GEMINI_API_KEY
+from screenscribe.synthesis import categorize, synthesize_pass
+
+# 1. discover categories from titles (cheap, cached) — the confirm view before any extraction
+cats = categorize("https://www.youtube.com/@SomeChannel")
+print([(c["name"], c["count"]) for c in cats["categories"]])
+
+# 2. fold the top-N of a category into a compounding, persisted aggregate
+out = synthesize_pass(
+    "https://www.youtube.com/@SomeChannel", "vegetarian",
+    item_schema="recipe", aggregate_schema="cookbook", top_n=20,
+)
+print(out["aggregate"])        # grows with each pass; resumable
+
+# whole bounded set in one cross-cutting pass (category=None) — e.g. a list of URLs:
+synthesize_pass([url1, url2, url3], None, item_schema=my_item, aggregate_schema=my_aggregate)
 ```
 
-Identifies complete, self-contained visuals — diagrams, scenes, charts, code, summaries — that work as standalone images, and extracts them into `~/.video-analyzer/{id}/slides/`.
+**How it works:** `resolve_videos` (channel/playlist/list → video IDs) → `extract_structured` per video (cached) → a text→structured **aggregation** that folds the new results into a persisted aggregate conforming to your *aggregate schema*. Each pass is bounded (a cap per category), so it scales to a whole channel without a giant prompt; the aggregate compounds and is resumable. One video's failure is isolated (it lands in `failed`, the pass continues) — never a silent drop.
 
-Options:
-
-```
---max-slides 15     Max slides to extract (default 15)
---focus / --time-range / --timestamps   (same as extract)
---force             Re-extract even if slides already exist
-```
-
-### List all sessions
-
-```bash
-screenscribe sessions
-```
+Ships a growable **`cookbook`** aggregate preset (`schemas/aggregate/`); free-form aggregate schemas work too. The building blocks are also usable directly: `resolve_videos(source)` and `extract_structured_batch(source, schema)`.
 
 ---
 
 ## MCP server
 
-The MCP server exposes screenscribe as a set of tools that any MCP-compatible client can call. The server handles video knowledge; **the client (your agent) does the reasoning** — including viewing the extracted frame images.
+Exposes screenscribe to any MCP-compatible client; the server handles the video, **your agent does the reasoning** (including viewing the extracted frames).
 
-Works with: Claude Code, Cursor, Windsurf, Continue, custom MCP agents, or any client that speaks the [Model Context Protocol](https://modelcontextprotocol.io).
-
-### Tools exposed
-
-| Tool                      | Description                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `extract_transcript(url)` | Fetch transcript only — fast, free, no key. Default for most questions.                                      |
-| `analyze_video(url)`      | Gemini watches the whole video → structured analysis (summary, sections, key moments). Cheap; no frames.     |
-| `extract_frames(url, style)` | Gemini picks moments, ffmpeg extracts PNGs the agent opens and reads. `style="keyframes"` (default) or `"slides"`. |
-| `get_video_analysis(id)`  | Read Gemini's whole-video analysis for a session.                                                            |
-| `get_session(session_id)` | Return session content (transcript, Gemini analysis, extracted frame paths) with `analysis_source` metadata. |
-| `list_sessions()`         | List all processed videos.                                                                                   |
-
-The client picks the right tool based on context. For most questions `extract_transcript` or `analyze_video` is sufficient; `extract_frames` when it needs to *see* what's on screen.
+| Tool | Description |
+| ---- | ----------- |
+| `extract_transcript(url)` | Transcript only — fast, free, no key. |
+| `analyze_video(url)` | Gemini watches the whole video → structured analysis (summary, sections, key moments). |
+| `extract_frames(url, style)` | Gemini picks moments, ffmpeg extracts PNGs the agent reads. `style="keyframes"` (default) or `"slides"`. |
+| `extract_structured(url, schema)` | Typed JSON conforming to a preset or your JSON Schema. The automation primitive. |
+| `get_video_analysis(id)` | Read Gemini's whole-video analysis for a session. |
+| `get_session(session_id)` | Session content (transcript, analysis, frame paths) with `analysis_source` metadata. |
+| `list_sessions()` | List all processed videos. |
 
 ### Register the MCP server
 
 No paths, no venv, no JSON surgery — `uvx` runs the published package on demand.
 
-**Claude Code** (one line):
+**Claude Code:**
 
 ```bash
 claude mcp add screenscribe -- uvx screenscribe-mcp
 ```
 
 **Cursor / Windsurf / Continue** (`.cursor/mcp.json` or your client's MCP config):
-
-```json
-{
-  "mcpServers": {
-    "screenscribe": {
-      "command": "uvx",
-      "args": ["screenscribe-mcp"]
-    }
-  }
-}
-```
-
-Pass the key through if your client doesn't inherit your shell environment — add an `"env"` block:
 
 ```json
 {
@@ -253,68 +172,74 @@ Pass the key through if your client doesn't inherit your shell environment — a
 }
 ```
 
-The server reads `GEMINI_API_KEY` from the environment (or a `.env` in the working directory). Restart your client after updating the config.
+(The `env` block is only needed if your client doesn't inherit your shell environment.) Restart the client after updating its config.
 
-### Example usage
+---
 
-Open your MCP client inside any project, then ask naturally:
+## CLI usage
 
-```
-"Summarise the key points from https://youtu.be/dQw4w9WgXcQ"
-```
-
-```
-"Extract slides from https://youtu.be/dQw4w9WgXcQ and list what each one covers"
-```
-
-```
-"Based on the architecture explained in https://youtu.be/dQw4w9WgXcQ,
- refactor my src/api/router.py to follow that pattern"
+```bash
+screenscribe extract <url> [--transcript-only]   # transcript, or download + Gemini-selected key frames
+screenscribe slides  <url>                        # standalone "slide" frames
+screenscribe analyze <url>                         # whole-video structured analysis (no frames)
+screenscribe extract-structured <url> --schema <preset|path|inline>   # typed JSON
+screenscribe sessions                              # list processed videos
 ```
 
-The client will:
+Common options on the extract/slides/structured commands: `--focus "…"`, `--time-range 5:00-15:00`, `--timestamps 5:30,10:00` (bypasses AI selection; no key), `--force`. Prefix any command with `uvx ` to run without installing.
 
-1. Call `extract_transcript(url)`, `analyze_video(url)`, or `extract_frames(url)` depending on what's needed — cached after the first run.
-2. Call `get_session(id)` — loads transcript, any Gemini analysis, and the extracted frame paths, with `analysis_source` metadata indicating what data is available.
-3. Open the frame images and read your project files for context.
-4. Answer (or generate), citing whether it drew from transcript alone, whole-video analysis, or extracted frames.
+---
+
+## Architecture
+
+```
+screenscribe/
+├── pyproject.toml         Package metadata + console scripts (screenscribe, screenscribe-mcp)
+├── src/screenscribe/
+│   ├── main.py            CLI — extract / analyze / slides / extract-structured / sessions
+│   ├── server.py          MCP server — 7 tools
+│   ├── resolver.py        (channel | playlist | list | video URL) → normalized video IDs
+│   ├── structured_extractor.py  Schema-driven typed extraction + batch fan-out (+ presets)
+│   ├── synthesis.py       Cross-video: categorize + compounding synthesize_pass
+│   ├── gemini_selector.py Gemini watches the video to pick frames; text→structured calls
+│   ├── gemini_analyzer.py Gemini whole-video structured analysis (analyze tier)
+│   ├── frame_extractor.py ffmpeg extraction + snap-to-stable + perceptual dedup
+│   ├── ffmpeg_paths.py    Resolves ffmpeg/ffprobe — system binary, else bundled static-ffmpeg
+│   ├── downloader.py      yt-dlp download + youtube-transcript-api fetch
+│   ├── transcript_selector.py  Selection helpers (timestamp parsing, validate/filter)
+│   ├── session.py         Session persistence at ~/.video-analyzer/
+│   ├── config.py          Gemini model + thresholds
+│   └── schemas/           Bundled JSON Schemas: per-video presets + aggregate/ (cookbook)
+├── tests/
+└── .env.example
+```
+
+**Storage** (global, outside the repo, at `~/.video-analyzer/`): per-video sessions (`session.json`, `frames/`, `slides/`), typed-extraction cache (`{id}/structured/{schema}.json`), and synthesis state (`synthesis/{key}/`).
 
 ---
 
 ## Configuration (`src/screenscribe/config.py`)
 
-| Setting                        | Default             | Description                                                   |
-| ------------------------------ | ------------------- | ------------------------------------------------------------- |
-| `IMAGE_MAX_WIDTH`              | `1280px`            | Frames resized to this width before saving.                   |
-| `FRAME_SELECTION_MAX`          | `25`                | Max frames Gemini selects.                                    |
-| `FRAME_SELECTION_MIN_INTERVAL` | `5.0s`              | Min gap between selected frames.                              |
-| `SLIDE_SELECTION_MAX`          | `15`                | Max slides to extract.                                        |
-| `SLIDE_SELECTION_MIN_INTERVAL` | `10.0s`             | Min gap between slides (wider than frames for diversity).     |
-| `GEMINI_MODEL`                 | `gemini-3.5-flash`  | Gemini model that watches the video.                          |
-| `GEMINI_MEDIA_RESOLUTION_LOW`  | `True`              | Low-res video sampling (~100 tok/s) — cheaper; set `False` for finer visual detail. |
-| `MAX_INLINE_TRANSCRIPT_CHARS`  | `100000`            | Max transcript chars `get_session` returns inline before pointing to the file instead. `None` = unlimited. |
+| Setting | Default | Description |
+| ------- | ------- | ----------- |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | Gemini model that watches the video. |
+| `GEMINI_MEDIA_RESOLUTION_LOW` | `True` | Low-res sampling (cheaper); set `False` for finer on-screen detail (e.g. reading code). |
+| `FRAME_SELECTION_MAX` | `25` | Max frames Gemini selects. |
+| `SLIDE_SELECTION_MAX` | `15` | Max slides to extract. |
+| `IMAGE_MAX_WIDTH` | `1280px` | Frames resized to this width before saving. |
+| `MAX_INLINE_TRANSCRIPT_CHARS` | `100000` | Max transcript chars `get_session` returns inline before pointing to the file. |
 
 ---
 
 ## API keys
 
-screenscribe uses a single key:
-
-- **`GEMINI_API_KEY` (Gemini)** — watches the video to select frames (`extract`, `slides`) and produce whole-video analysis (`analyze`). Get one from [Google AI Studio](https://aistudio.google.com/apikey).
-
-These need **no** key and make no API calls:
-
-- `extract --transcript-only` / `extract_transcript` — fetches the transcript from YouTube only
-- `extract --timestamps ...` — extract at exact timestamps, bypassing AI selection
-- `get_session` / `list_sessions` — read from disk
-
-Reasoning over the result — answering questions, generating code — is done by **your agent**, not by screenscribe, so no separate model key is required.
+One key: **`GEMINI_API_KEY`** (read from the shell environment or a `.env` in the working directory). [Get one from Google AI Studio](https://aistudio.google.com/apikey). No key needed for `extract --transcript-only`, `extract … --timestamps`, or reading existing sessions. Reasoning over the results — answering, generating — is your agent's job, so no separate model key is required.
 
 ---
 
 ## Notes
 
-- Works on **any kind of video** — selection is content-agnostic. Use `--focus` (or a tool's `focus`) to steer toward a specific subject.
-- `get_session` returns the **full transcript** (no silent truncation). For very long videos it returns a preview plus a `transcript_path` to the on-disk file and a `transcript_truncated` flag, rather than dropping data silently.
-- Sessions are **machine-local** (`~/.video-analyzer/`). Installing on a new machine means re-running `extract` once per video.
-- `youtube-transcript-api` v1.2.4+ uses an instance-based API: `YouTubeTranscriptApi().fetch(video_id)`. If you see `AttributeError: get_transcript`, you're on an old version — `pip install -U youtube-transcript-api`.
+- **Any kind of video** — selection and extraction are content-agnostic. Use `--focus` (or a tool's `focus`) to steer toward a subject.
+- **Never a silent cut.** Transcripts that exceed the inline cap point to the on-disk file with a `transcript_truncated` flag; resolver/synthesis surface skipped/failed counts; structured extraction returns an explicit `invalid` status rather than malformed data.
+- **Machine-local** sessions (`~/.video-analyzer/`); installing on a new machine re-runs extraction once per video.
+- `youtube-transcript-api` v1.2.4+ uses `YouTubeTranscriptApi().fetch(video_id)`. If you see `AttributeError: get_transcript`, run `pip install -U youtube-transcript-api`.
