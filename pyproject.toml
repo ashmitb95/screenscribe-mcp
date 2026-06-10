@@ -5,13 +5,24 @@ build-backend = "hatchling.build"
 [project]
 name = "screenscribe-mcp"
 version = "0.2.0"
-description = "Turn instructional videos into queryable knowledge — CLI + MCP server, powered by Gemini (watches the video) and Claude (describes frames, answers questions)."
+description = "Extract typed, schema-validated data from videos and synthesize across many — a Gemini-powered CLI and MCP server for agents."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "ashmitb95" }]
 keywords = [
     "youtube", "video", "transcript", "mcp", "model-context-protocol",
-    "gemini", "claude", "ai", "video-analysis", "screen-recording",
+    "gemini", "structured-extraction", "json-schema", "cross-video-synthesis",
+    "ai", "agents",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "yt-dlp",
@@ -23,6 +34,11 @@ dependencies = [
     "static-ffmpeg",
     "jsonschema",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ashmitb95/screenscribe-mcp"
+Repository = "https://github.com/ashmitb95/screenscribe-mcp"
+Issues = "https://github.com/ashmitb95/screenscribe-mcp/issues"
 
 [project.scripts]
 screenscribe = "screenscribe.main:main"
