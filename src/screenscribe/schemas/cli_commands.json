@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "description": "Every CLI / terminal command shown or run in the video.",
+  "properties": {
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "command": { "type": "string", "description": "The exact command as shown" },
+          "context": { "type": "string", "description": "What it does or why it is run" },
+          "seconds": { "type": "number", "description": "Timestamp in seconds where it appears" }
+        },
+        "required": ["command"]
+      }
+    }
+  },
+  "required": ["commands"]
+}

@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "description": "The ordered steps or stages demonstrated in the video.",
+  "properties": {
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": { "type": "integer", "description": "1-based step number" },
+          "seconds": { "type": "number", "description": "Timestamp in seconds where the step starts" },
+          "action": { "type": "string", "description": "What is done in this step" },
+          "detail": { "type": "string", "description": "Specifics: what changed, commands, or code" }
+        },
+        "required": ["step", "action"]
+      }
+    }
+  },
+  "required": ["steps"]
+}

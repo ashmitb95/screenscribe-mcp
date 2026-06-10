@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "description": "Distinct blocks of code shown on screen in the video.",
+  "properties": {
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "language": { "type": "string", "description": "Programming language if identifiable" },
+          "code": { "type": "string", "description": "The code as shown on screen" },
+          "explanation": { "type": "string", "description": "What the code does / the surrounding explanation" },
+          "seconds": { "type": "number", "description": "Timestamp in seconds where it appears" }
+        },
+        "required": ["code"]
+      }
+    }
+  },
+  "required": ["blocks"]
+}

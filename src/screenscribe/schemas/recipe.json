@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "description": "A complete cooking recipe extracted from a cooking-tutorial video, including ingredients with quantities, the ordered cooking process, and tips.",
+  "properties": {
+    "dish": { "type": "string", "description": "Name of the dish (transliterate if the video is not in English)" },
+    "servings": { "type": "string", "description": "How many it serves, or what it is served with, if stated" },
+    "ingredients": {
+      "type": "array",
+      "description": "Every ingredient with its exact quantity as spoken in the narration or shown on screen.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": { "type": "string", "description": "Ingredient name" },
+          "quantity": { "type": "string", "description": "Exact amount with unit (e.g. '250 g', '1 tsp', '2 medium'); 'to taste' / 'as needed' if that is what was said" },
+          "group": { "type": "string", "description": "Optional sub-grouping if the recipe separates them (e.g. 'marinade', 'gravy', 'tempering')" }
+        },
+        "required": ["item"]
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "The ordered cooking process.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": { "type": "integer", "description": "1-based step number" },
+          "seconds": { "type": "number", "description": "Timestamp in seconds where the step starts" },
+          "action": { "type": "string", "description": "What to do in this step" },
+          "time_minutes": { "type": "number", "description": "Cooking/resting time for this step in minutes, if stated" },
+          "heat": { "type": "string", "description": "Heat level if stated (e.g. 'low', 'medium-high')" }
+        },
+        "required": ["step", "action"]
+      }
+    },
+    "tips": {
+      "type": "array",
+      "description": "Techniques or tips the cook gives for a better result.",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["dish", "ingredients", "steps"]
+}

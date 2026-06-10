@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "description": "External resources referenced in the video: tools, libraries, docs, URLs, people.",
+  "properties": {
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Name of the resource" },
+          "type": { "type": "string", "description": "tool, library, url, doc, person, etc." },
+          "url": { "type": "string", "description": "URL if shown or stated" },
+          "context": { "type": "string", "description": "How it is used or why it matters" }
+        },
+        "required": ["name"]
+      }
+    }
+  },
+  "required": ["resources"]
+}

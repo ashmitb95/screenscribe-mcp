@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "description": "The video broken into its main sections / chapters.",
+  "properties": {
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "start_seconds": { "type": "number", "description": "Section start in seconds" },
+          "title": { "type": "string", "description": "Short section title" },
+          "summary": { "type": "string", "description": "One-line summary of the section" }
+        },
+        "required": ["start_seconds", "title"]
+      }
+    }
+  },
+  "required": ["chapters"]
+}
