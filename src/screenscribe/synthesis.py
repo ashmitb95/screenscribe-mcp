@@ -197,7 +197,7 @@ def _build_aggregate_prompt(prior, new_results, category, aggregate_schema) -> s
 
 def synthesize_pass(
     source,
-    category,
+    category=None,
     *,
     item_schema,
     aggregate_schema,
@@ -208,27 +208,40 @@ def synthesize_pass(
     model=GEMINI_MODEL,
     media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
 ) -> dict:
-    """Fold the top-N of `category` into the persisted, compounding aggregate for
-    (source, aggregate_schema). One video's extraction failure never aborts the pass.
+    """Fold the top-N of a batch into the persisted, compounding aggregate for
+    (source, aggregate_schema). `category=None` synthesizes over the whole resolved
+    set (capped at top_n) — for cross-cutting synthesis over a list/channel; a
+    category name restricts the pass to that bucket (via categorize). One video's
+    extraction failure never aborts the pass.
     Returns:
-      {status, category, added:[video_id], extraction_failed:[...], aggregate, aggregate_key,
-       passes_so_far, truncated, skipped}
+      {status, category, added:[video_id], extraction_failed:[...], aggregate,
+       aggregate_key, passes_so_far, truncated}
     """
     from screenscribe.gemini_selector import _call_gemini_text, gemini_available
 
     if not gemini_available():
         return {"status": "error", "error": "synthesize_pass needs GEMINI_API_KEY."}
 
-    cats = categorize(source, force=force)
-    if cats.get("status") != "success":
-        return cats
-    match = next((c for c in cats["categories"] if c["name"] == category), None)
-    if match is None:
-        return {"status": "error",
-                "error": f"Unknown category '{category}'. Available: {[c['name'] for c in cats['categories']]}"}
+    if category is None:
+        # Whole bounded set — no category gating. For cross-cutting synthesis over a
+        # list of videos or a (capped) channel, where the insight needs all of them
+        # together rather than one category at a time.
+        from screenscribe.resolver import resolve_videos
+        ranked = resolve_videos(source)["video_ids"]
+        selected = ranked[:top_n]
+        truncated = len(ranked) > top_n
+    else:
+        cats = categorize(source, force=force)
+        if cats.get("status") != "success":
+            return cats
+        match = next((c for c in cats["categories"] if c["name"] == category), None)
+        if match is None:
+            return {"status": "error",
+                    "error": f"Unknown category '{category}'. Available: {[c['name'] for c in cats['categories']]}"}
+        selected = match["video_ids"][:top_n]
+        truncated = len(match["video_ids"]) > top_n
 
-    selected = match["video_ids"][:top_n]
-    truncated = len(match["video_ids"]) > top_n
+    cat_label = category or "all"
 
     agg_schema = resolve_aggregate_schema(aggregate_schema)
     agg_path = _aggregate_path(source, aggregate_schema)
@@ -252,7 +265,7 @@ def synthesize_pass(
 
     aggregate = state["aggregate"]
     if new_results:
-        prompt = _build_aggregate_prompt(aggregate, new_results, category, agg_schema)
+        prompt = _build_aggregate_prompt(aggregate, new_results, cat_label, agg_schema)
         raw = _call_gemini_text(model, prompt, agg_schema)
         ok, data, err = validate_output(raw, agg_schema)
         if not ok:
@@ -263,7 +276,7 @@ def synthesize_pass(
             ok, data, err = validate_output(raw, agg_schema)
         if not ok:
             # Don't lose prior state on a bad aggregate call.
-            return {"status": "invalid", "category": category, "error": err, "raw": raw,
+            return {"status": "invalid", "category": cat_label, "error": err, "raw": raw,
                     "aggregate": aggregate, "extraction_failed": failed}
         aggregate = data
 
@@ -278,12 +291,12 @@ def synthesize_pass(
 
     return {
         "status": "success",
-        "category": category,
+        "category": cat_label,
         "added": [r["video_id"] for r in new_results],
         "extraction_failed": failed,
         "aggregate": aggregate,
         "aggregate_key": f"{_source_key(source)}__{_aggregate_key(aggregate_schema)}",
         "passes_so_far": state["passes"],
         "truncated": truncated,
-        "skipped": cats.get("ranked"),
     }
+

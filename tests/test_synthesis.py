@@ -169,3 +169,26 @@ def test_synthesize_pass_unknown_category(monkeypatch, tmp_path):
     out = syn.synthesize_pass("src", "dessert", item_schema="recipe", aggregate_schema="cookbook")
     assert out["status"] == "error"
     assert "dessert" in out["error"]
+
+
+def test_synthesize_pass_whole_set_no_category(monkeypatch, tmp_path):
+    # category=None → synthesize over the whole resolved set (no categorize call).
+    _setup(monkeypatch, tmp_path)
+    _resolver(monkeypatch, [
+        {"id": "a", "title": "t", "duration": 1, "view_count": None},
+        {"id": "b", "title": "t", "duration": 1, "view_count": None},
+    ], kind="list")
+
+    def boom(*a, **k):
+        raise AssertionError("categorize must not be called when category is None")
+    monkeypatch.setattr(syn, "categorize", boom)
+    monkeypatch.setattr(syn, "extract_structured",
+                        lambda url, schema, **k: {"status": "success", "data": {"dish": url[-1]}, "cached": False})
+    monkeypatch.setattr(gs, "_call_gemini_text", lambda *a, **k: json.dumps(
+        {"categories": [{"name": "all", "recipes": [{"dish": "x"}]}]}))
+
+    out = syn.synthesize_pass(["u1", "u2"], None, item_schema="recipe",
+                              aggregate_schema="cookbook", top_n=5)
+    assert out["status"] == "success"
+    assert out["category"] == "all"
+    assert set(out["added"]) == {"a", "b"}
