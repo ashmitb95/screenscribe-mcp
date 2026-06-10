@@ -183,13 +183,18 @@ def categorize(source, *, max_videos=None, min_duration=0, force=False, model=GE
 def _build_aggregate_prompt(prior, new_results, category, aggregate_schema) -> str:
     desc = aggregate_schema.get("description", "")
     return (
-        "You are incrementally building one aggregate artifact from many videos, conforming "
-        "to the provided JSON schema. Integrate the NEW per-video results below into the "
-        "EXISTING aggregate: add them under the matching category, deduplicate by dish/name, "
-        "keep it coherent, and preserve everything already in the aggregate. Return the FULL "
-        "updated aggregate as JSON.\n"
+        "You are incrementally building ONE aggregate artifact from many videos, conforming to "
+        "the provided JSON schema. Integrate the NEW per-video results below into the EXISTING "
+        "aggregate: merge and de-duplicate equivalent entries, keep it coherent, and preserve "
+        "everything already present. Return the FULL updated aggregate as JSON.\n"
+        "For any cross-cutting fields the schema asks for (common patterns, invariants, "
+        "vocabulary, corrections, insights): derive them from the ACTUAL DATA in the results — "
+        "especially NON-OBVIOUS findings that the detailed fields (exact code, parameters, "
+        "values, timings) reveal and that a surface-level summary would miss. Quote the concrete "
+        "evidence (e.g. the exact code/parameters), prefer specific falsifiable statements over "
+        "generic ones, and explicitly separate what is INVARIANT across videos from what VARIES.\n"
         f"{('Aggregate purpose: ' + desc) if desc else ''}\n\n"
-        f"CATEGORY OF THIS BATCH: {category}\n\n"
+        f"BATCH LABEL: {category}\n\n"
         f"EXISTING AGGREGATE (may be null on the first pass):\n{json.dumps(prior)}\n\n"
         f"NEW PER-VIDEO RESULTS:\n{json.dumps(new_results)}"
     )
