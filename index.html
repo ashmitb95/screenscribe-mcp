@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>screenscribe — extract typed data from videos, synthesize across many</title>
+<meta name="description" content="A Gemini-powered CLI + MCP server that extracts typed, schema-validated data from videos and synthesizes across an entire channel. Built for agents." />
+<meta property="og:title" content="screenscribe" />
+<meta property="og:description" content="Extract typed data from videos. Synthesize across many. A Gemini-powered CLI + MCP server for agents." />
+<meta property="og:type" content="website" />
+<style>
+  :root{
+    --bg:#0a0b0f; --bg2:#0d0f15; --surface:#14161d; --surface2:#191c25;
+    --border:#23262f; --text:#e7e9f0; --muted:#9aa3b4; --faint:#6b7280;
+    --a1:#7c8bff; --a2:#b15cff; --accent:#8b93ff;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .grad{background:linear-gradient(100deg,var(--a1),var(--a2));-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:10px;
+    font-weight:600;font-size:15px;border:1px solid transparent;transition:.18s;cursor:pointer}
+  .btn-primary{background:linear-gradient(100deg,var(--a1),var(--a2));color:#0a0b0f}
+  .btn-primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+  .btn-ghost{border-color:var(--border);color:var(--text);background:var(--surface)}
+  .btn-ghost:hover{border-color:var(--accent);background:var(--surface2)}
+  .eyebrow{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);
+    background:rgba(10,11,15,.72);border-bottom:1px solid var(--border)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;letter-spacing:-.01em}
+  .logo .dot{width:11px;height:11px;border-radius:50%;background:linear-gradient(135deg,var(--a1),var(--a2));
+    box-shadow:0 0 16px rgba(139,147,255,.6)}
+  .nav-links{display:flex;align-items:center;gap:26px;font-size:14.5px;color:var(--muted)}
+  .nav-links a:hover{color:var(--text)}
+  .nav-links .ghpill{color:var(--text)}
+  @media(max-width:720px){.nav-links a:not(.ghpill){display:none}}
+
+  /* hero */
+  header{position:relative;padding:96px 0 72px;text-align:center;overflow:hidden}
+  .glow{position:absolute;top:-180px;left:50%;transform:translateX(-50%);width:760px;height:520px;
+    background:radial-gradient(50% 50% at 50% 50%,rgba(124,139,255,.22),transparent 70%);
+    filter:blur(20px);pointer-events:none}
+  .glow2{position:absolute;top:-60px;right:-120px;width:420px;height:420px;
+    background:radial-gradient(50% 50% at 50% 50%,rgba(177,92,255,.14),transparent 70%);
+    filter:blur(20px);pointer-events:none}
+  h1{position:relative;font-size:clamp(36px,6vw,62px);line-height:1.05;font-weight:800;
+    letter-spacing:-.03em;margin:18px auto 0;max-width:14ch}
+  .sub{position:relative;font-size:clamp(17px,2.4vw,20px);color:var(--muted);max-width:60ch;
+    margin:22px auto 0}
+  .cta{position:relative;display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+  .install-chip{position:relative;margin:30px auto 0;max-width:560px}
+
+  /* code */
+  .code{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    font-family:var(--mono);font-size:13.5px;text-align:left;overflow:hidden}
+  .code .bar{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid var(--border);
+    color:var(--faint);font-size:12px}
+  .code .bar i{width:11px;height:11px;border-radius:50%;background:#33363f;display:inline-block}
+  .code pre{margin:0;padding:16px 18px;overflow-x:auto;line-height:1.55;color:#d6d9e3}
+  .code .cm{color:var(--faint)} .code .pr{color:#67e8b0} .code .ky{color:var(--a1)}
+  .code .st{color:#e3b873} .code .nm{color:#79c0ff}
+  .copy{position:absolute;top:9px;right:10px;background:var(--surface2);border:1px solid var(--border);
+    color:var(--muted);border-radius:7px;padding:5px 10px;font-size:12px;font-family:var(--sans);cursor:pointer}
+  .copy:hover{color:var(--text);border-color:var(--accent)}
+
+  /* sections */
+  section{padding:76px 0;border-top:1px solid var(--border)}
+  .stitle{font-size:clamp(26px,3.6vw,36px);font-weight:800;letter-spacing:-.02em;max-width:20ch}
+  .slede{color:var(--muted);font-size:17px;margin-top:12px;max-width:62ch}
+  .center{text-align:center;margin:0 auto}
+  .center .slede{margin-left:auto;margin-right:auto}
+
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:42px}
+  @media(max-width:860px){.cards{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:26px;
+    transition:.18s}
+  .card:hover{border-color:#33384a;transform:translateY(-2px)}
+  .card .ic{font-size:24px;width:46px;height:46px;display:grid;place-items:center;border-radius:11px;
+    background:linear-gradient(135deg,rgba(124,139,255,.16),rgba(177,92,255,.16));
+    border:1px solid var(--border);margin-bottom:16px}
+  .card h3{font-size:18.5px;letter-spacing:-.01em}
+  .card p{color:var(--muted);font-size:14.5px;margin-top:8px}
+  .card code{font-family:var(--mono);font-size:12.5px;color:var(--accent);background:var(--surface2);
+    padding:1px 6px;border-radius:5px}
+
+  /* show block */
+  .show{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:42px;align-items:start}
+  @media(max-width:860px){.show{grid-template-columns:1fr}}
+  .show .label{font-size:13px;color:var(--faint);margin-bottom:10px;font-weight:600}
+  .show p.note{color:var(--muted);font-size:14.5px;margin-top:14px}
+
+  /* steps */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:42px;counter-reset:s}
+  @media(max-width:860px){.steps{grid-template-columns:1fr}}
+  .step{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;position:relative}
+  .step .n{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:700}
+  .step h4{font-size:16.5px;margin:8px 0 6px;letter-spacing:-.01em}
+  .step p{color:var(--muted);font-size:14px}
+  .step p code{font-family:var(--mono);font-size:12px;color:var(--accent)}
+
+  /* tools */
+  .tools{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:34px}
+  @media(max-width:860px){.tools{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.tools{grid-template-columns:1fr}}
+  .tool{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 15px;
+    font-family:var(--mono);font-size:13px}
+  .tool b{color:var(--text);font-weight:600} .tool span{color:var(--muted);font-size:12.5px;font-family:var(--sans)}
+
+  /* install */
+  .install-blocks{display:flex;flex-direction:column;gap:16px;margin-top:36px;max-width:680px}
+  .install-blocks .lbl{font-size:13.5px;color:var(--muted);margin-bottom:8px}
+  .install-blocks .lbl b{color:var(--text)}
+
+  footer{border-top:1px solid var(--border);padding:46px 0;color:var(--muted);font-size:14px}
+  .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+  .foot a{color:var(--muted)} .foot a:hover{color:var(--text)}
+  .foot .fl{display:flex;gap:22px}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12.5px;
+    background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:5px 13px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap nav">
+  <div class="logo"><span class="dot"></span> screenscribe</div>
+  <div class="nav-links">
+    <a href="#capabilities">Capabilities</a>
+    <a href="#how">How it works</a>
+    <a href="#install">Install</a>
+    <a class="ghpill" href="https://github.com/ashmitb95/screenscribe-mcp">GitHub ↗</a>
+  </div>
+</div></nav>
+
+<header>
+  <div class="glow"></div><div class="glow2"></div>
+  <div class="wrap">
+    <span class="eyebrow">Gemini-powered · CLI + MCP · open source</span>
+    <h1>Extract <span class="grad">typed data</span> from videos. Synthesize across many.</h1>
+    <p class="sub">Hand it a schema and it fills it from what's on screen <em>and</em> said. Point it at a whole channel and it compounds every video into one coherent artifact. Built as a primitive your agent composes — not another summarizer.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#install">Add to your agent</a>
+      <a class="btn btn-ghost" href="https://github.com/ashmitb95/screenscribe-mcp">★ View on GitHub</a>
+    </div>
+    <div class="install-chip">
+      <div class="code"><button class="copy" data-c='claude mcp add screenscribe -- uvx screenscribe-mcp'>copy</button>
+        <pre><span class="cm"># one line — no install, no paths, no JSON surgery</span>
+<span class="pr">$</span> claude mcp add screenscribe <span class="ky">--</span> uvx screenscribe-mcp</pre></div>
+    </div>
+  </div>
+</header>
+
+<section id="capabilities">
+  <div class="wrap">
+    <div class="center">
+      <span class="eyebrow">What it does</span>
+      <h2 class="stitle center">Three layers, each building on the last.</h2>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <div class="ic">▦</div>
+        <h3>Typed extraction</h3>
+        <p>Hand it a <b>JSON Schema</b> (or a preset) and get back validated JSON — every CLI command shown, the final config, a recipe with quantities, the code at each step. Output is schema-checked, retried, never malformed. <code>extract_structured</code></p>
+      </div>
+      <div class="card">
+        <div class="ic">⧉</div>
+        <h3>Cross-video synthesis</h3>
+        <p>Point at a <b>channel / playlist / list</b> → fan the typed extraction over every video → <b>compound</b> the results into one artifact in the shape you define. Scales past a context window, one capped batch at a time. <code>synthesize</code></p>
+      </div>
+      <div class="card">
+        <div class="ic">⌘</div>
+        <h3>Agent-native</h3>
+        <p>An <b>MCP server</b> (9 tools) and a CLI — your agent calls it directly and reasons over the result. Works in Claude Code, Cursor, Windsurf, any MCP client. Any language, no captions required.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="show">
+  <div class="wrap">
+    <span class="eyebrow">Show, don't tell</span>
+    <h2 class="stitle">A schema in. Validated data out.</h2>
+    <p class="slede">The extraction layer is a commodity — so we built the part that compounds: typed output an agent automates on, and synthesis no single model call produces.</p>
+    <div class="show">
+      <div>
+        <div class="label">ONE VIDEO → TYPED JSON</div>
+        <div class="code"><button class="copy" data-c='uvx screenscribe extract-structured "<url>" --schema recipe'>copy</button>
+          <pre><span class="pr">$</span> uvx screenscribe extract-structured <span class="st">"&lt;url&gt;"</span> <span class="ky">--schema</span> recipe
+{
+  <span class="ky">"dish"</span>: <span class="st">"Aam Pora Chicken"</span>,
+  <span class="ky">"ingredients"</span>: [
+    {<span class="ky">"item"</span>:<span class="st">"raw mango"</span>,<span class="ky">"quantity"</span>:<span class="st">"1 medium"</span>},
+    <span class="cm">… exact quantities, read on-screen + spoken</span>
+  ],
+  <span class="ky">"steps"</span>: [{ <span class="ky">"seconds"</span>:<span class="nm">41</span>, <span class="ky">"action"</span>:<span class="st">"roast over flame"</span> }]
+}</pre></div>
+        <p class="note">7 built-in presets (<code style="font-family:var(--mono);font-size:12px;color:var(--accent)">cli_commands · code_blocks · final_config · step_sequence · resources_mentioned · chapters · recipe</code>) — or pass your own schema.</p>
+      </div>
+      <div>
+        <div class="label">A WHOLE CHANNEL → ONE ARTIFACT</div>
+        <div class="code"><button class="copy" data-c='uvx screenscribe synthesize categorize "<channel>"'>copy</button>
+          <pre><span class="pr">$</span> uvx screenscribe synthesize categorize <span class="st">"&lt;channel&gt;"</span>
+<span class="cm">channel — 353 videos, 6 categories:</span>
+   <span class="nm">80</span>  vegetarian
+   <span class="nm">62</span>  fish
+   <span class="nm">47</span>  chicken      <span class="cm"># confirm, then:</span>
+
+<span class="pr">$</span> uvx screenscribe synthesize pass <span class="st">"&lt;channel&gt;"</span> \
+    <span class="ky">--category</span> fish <span class="ky">--item-schema</span> recipe \
+    <span class="ky">--aggregate-schema</span> cookbook <span class="ky">--top</span> <span class="nm">20</span>
+<span class="cm">→ one cookbook, compounding with every pass</span></pre></div>
+        <p class="note">Each pass is bounded and cached — re-runs are free, and the aggregate is resumable.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="center"><span class="eyebrow">How it works</span>
+      <h2 class="stitle center">Resolve → extract → compound.</h2></div>
+    <div class="steps">
+      <div class="step"><div class="n">01</div><h4>Point at anything</h4>
+        <p>A single video, a playlist, an array of URLs, or a whole channel — <code>resolve_videos</code> normalizes it to a video list. Gemini watches the actual frames + audio; no captions needed.</p></div>
+      <div class="step"><div class="n">02</div><h4>Extract to your schema</h4>
+        <p>Each video → validated JSON conforming to your shape. Cached per <code>(video, schema)</code>, so re-runs cost nothing.</p></div>
+      <div class="step"><div class="n">03</div><h4>Compound across many</h4>
+        <p>Fold the per-video results into one persisted aggregate — a cookbook, a technique grammar, a comparison. The artifact grows; you stay in control of each pass.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <span class="eyebrow">Install</span>
+    <h2 class="stitle">Two ways in. One key.</h2>
+    <p class="slede">Requires <a href="https://docs.astral.sh/uv/" style="color:var(--accent)">uv</a> (or pip). ffmpeg is bundled. The only key is <code style="font-family:var(--mono);font-size:13px;color:var(--accent)">GEMINI_API_KEY</code> — transcript-only mode needs none.</p>
+    <div class="install-blocks">
+      <div>
+        <div class="lbl"><b>As an MCP server</b> — for Claude Code / Cursor / Windsurf</div>
+        <div class="code"><button class="copy" data-c='claude mcp add screenscribe -- uvx screenscribe-mcp'>copy</button>
+          <pre><span class="pr">$</span> claude mcp add screenscribe <span class="ky">--</span> uvx screenscribe-mcp</pre></div>
+      </div>
+      <div>
+        <div class="lbl"><b>As a CLI</b> — extract, synthesize, or just grab a transcript free</div>
+        <div class="code"><button class="copy" data-c='uvx screenscribe extract-structured "<url>" --schema cli_commands'>copy</button>
+          <pre><span class="pr">$</span> uvx screenscribe extract-structured <span class="st">"&lt;url&gt;"</span> <span class="ky">--schema</span> cli_commands
+<span class="pr">$</span> uvx screenscribe extract <span class="st">"&lt;url&gt;"</span> <span class="ky">--transcript-only</span>  <span class="cm"># free, no key</span></pre></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tools">
+  <div class="wrap">
+    <span class="eyebrow">MCP tools</span>
+    <h2 class="stitle">Nine tools your agent can call.</h2>
+    <div class="tools">
+      <div class="tool"><b>extract_transcript</b> · <span>free, no key</span></div>
+      <div class="tool"><b>analyze_video</b> · <span>whole-video analysis</span></div>
+      <div class="tool"><b>extract_frames</b> · <span>key frames / slides</span></div>
+      <div class="tool"><b>extract_structured</b> · <span>typed JSON</span></div>
+      <div class="tool"><b>synthesize_categorize</b> · <span>discover categories</span></div>
+      <div class="tool"><b>synthesize_pass</b> · <span>compounding aggregate</span></div>
+      <div class="tool"><b>get_video_analysis</b> · <span>read analysis</span></div>
+      <div class="tool"><b>get_session</b> · <span>transcript + frames</span></div>
+      <div class="tool"><b>list_sessions</b> · <span>processed videos</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div class="fl">
+      <a href="https://github.com/ashmitb95/screenscribe-mcp">GitHub</a>
+      <a href="https://pypi.org/project/screenscribe-mcp/">PyPI</a>
+      <a href="https://modelcontextprotocol.io">MCP</a>
+    </div>
+    <span class="pill">built on Gemini · MIT licensed</span>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(b=>{
+    b.addEventListener('click',()=>{
+      navigator.clipboard.writeText(b.dataset.c);
+      const t=b.textContent; b.textContent='copied ✓';
+      setTimeout(()=>b.textContent=t,1400);
+    });
+  });
+</script>
+</body>
+</html>
