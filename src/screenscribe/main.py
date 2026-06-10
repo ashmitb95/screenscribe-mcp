@@ -348,6 +348,48 @@ def cmd_sessions(_args):
     print(f"{'─' * 60}\n")
 
 
+# ── synthesize ──────────────────────────────────────────────────────────────────
+
+def cmd_synthesize_categorize(args):
+    from screenscribe.synthesis import categorize
+
+    out = categorize(args.source, max_videos=args.max_videos,
+                     min_duration=args.min_duration, force=args.force)
+    if out.get("status") != "success":
+        print(f"ERROR: {out.get('error', out)}", file=sys.stderr)
+        sys.exit(1)
+
+    ranked = " (ranked by views)" if out.get("ranked") else ""
+    print(f"\n{out['kind']} — {out['total']} videos, {len(out['categories'])} categories{ranked}:")
+    for c in out["categories"]:
+        print(f"  {c['count']:4d}  {c['name']}")
+    print(f"\nNext: screenscribe synthesize pass \"{args.source}\" --category <name> "
+          f"--item-schema <preset|path> --aggregate-schema <preset|path>")
+
+
+def cmd_synthesize_pass(args):
+    from screenscribe.synthesis import synthesize_pass
+
+    out = synthesize_pass(
+        args.source, args.category or None,
+        item_schema=args.item_schema, aggregate_schema=args.aggregate_schema,
+        top_n=args.top_n, focus=args.focus, force=args.force,
+        media_resolution_low=(args.media_res == "low"),
+    )
+    status = out.get("status")
+    if status == "success":
+        print(json.dumps(out["aggregate"], indent=2))   # the artifact → stdout (pipeable)
+        print(f"[{out['category']}] added={len(out['added'])} "
+              f"failed={len(out['extraction_failed'])} passes={out['passes_so_far']} "
+              f"truncated={out['truncated']}", file=sys.stderr)
+    elif status == "invalid":
+        print(f"ERROR: aggregate failed schema validation: {out.get('error')}", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print(f"ERROR: {out.get('error', out)}", file=sys.stderr)
+        sys.exit(1)
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -413,6 +455,33 @@ def main():
     p_struct.add_argument("--force", action="store_true",
                           help="Re-run even if a cached result exists")
 
+    # synthesize (nested: categorize | pass)
+    p_syn = sub.add_parser("synthesize",
+                           help="Cross-video synthesis: categorize a channel, then compound passes")
+    syn_sub = p_syn.add_subparsers(dest="syn_action", metavar="ACTION")
+
+    p_cat = syn_sub.add_parser("categorize",
+                               help="Discover categories from a channel/playlist's titles (cheap, no extraction)")
+    p_cat.add_argument("source", help="Channel / playlist URL")
+    p_cat.add_argument("--max-videos", type=int, default=None, help="Cap videos resolved")
+    p_cat.add_argument("--min-duration", type=int, default=0, help="Drop videos shorter than N seconds")
+    p_cat.add_argument("--force", action="store_true", help="Re-classify even if cached")
+
+    p_pass = syn_sub.add_parser("pass",
+                                help="Fold top-N of a category (or the whole set) into a compounding aggregate")
+    p_pass.add_argument("source", help="Channel / playlist / video URL")
+    p_pass.add_argument("--item-schema", required=True,
+                        help="Per-video schema: preset name, path, or inline JSON Schema")
+    p_pass.add_argument("--aggregate-schema", required=True,
+                        help="Aggregate schema: preset (e.g. 'cookbook'), path, or inline JSON Schema")
+    p_pass.add_argument("--category", default="",
+                        help="Category from `categorize` to pace this pass; omit for the whole set")
+    p_pass.add_argument("--top", type=int, default=20, dest="top_n", help="Max videos this pass (default 20)")
+    p_pass.add_argument("--focus", type=str, default="", help="Narrow what each extraction captures")
+    p_pass.add_argument("--media-res", choices=["low", "medium"], default="low",
+                        help="medium reads tiny on-screen detail (e.g. code) better; default low")
+    p_pass.add_argument("--force", action="store_true", help="Re-extract + re-fold even if cached/included")
+
     # sessions
     sub.add_parser("sessions", help="List all processed videos")
 
@@ -426,6 +495,13 @@ def main():
         cmd_slides(args)
     elif args.command == "extract-structured":
         cmd_extract_structured(args)
+    elif args.command == "synthesize":
+        if args.syn_action == "categorize":
+            cmd_synthesize_categorize(args)
+        elif args.syn_action == "pass":
+            cmd_synthesize_pass(args)
+        else:
+            p_syn.print_help()
     elif args.command == "sessions":
         cmd_sessions(args)
     else:

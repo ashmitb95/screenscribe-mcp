@@ -36,7 +36,7 @@ The raw extraction is a commodity (it's Gemini under the hood). The durable valu
 | Whole-video analysis | `analyze` / `analyze_video` | ~$0.03 | summary, timestamped sections, key moments, on-screen text |
 | Frames | `extract` / `extract_frames` | ~$0.03 | key frames as PNGs your agent reads |
 | **Typed extraction** ⭐ | `extract-structured` / `extract_structured` | ~$0.03 | **validated JSON conforming to your schema/preset** |
-| **Cross-video synthesis** ⭐ | Python: `synthesize_pass` | ~$0.03 × N | **one compounding artifact across many videos** |
+| **Cross-video synthesis** ⭐ | `synthesize` / `synthesize_pass` | ~$0.03 × N | **one compounding artifact across many videos** |
 
 ---
 
@@ -107,7 +107,24 @@ screenscribe extract-structured "https://youtu.be/<id>" --schema ./shape.json | 
 
 ## Cross-video synthesis
 
-Point at a **channel / playlist / list of URLs** and synthesize one artifact across all of it — *schema-driven*, like per-video extraction but for the aggregate. Currently a **Python engine** (a CLI / MCP surface is planned).
+Point at a **channel / playlist / list of URLs** and synthesize one artifact across all of it — *schema-driven*, like per-video extraction but for the aggregate. Two steps: **categorize** (cheap, read-only — discover the buckets and confirm before spending), then **pass** (extract a capped batch and fold it into a compounding aggregate).
+
+**CLI:**
+
+```bash
+# 1. discover categories from the channel's titles (cheap, cached) — the confirm view
+screenscribe synthesize categorize "https://www.youtube.com/@SomeChannel"
+
+# 2. fold the top-20 of a category into a compounding cookbook (repeat per category)
+screenscribe synthesize pass "https://www.youtube.com/@SomeChannel" \
+    --category vegetarian --item-schema recipe --aggregate-schema cookbook --top 20
+#   --media-res medium   # reads tiny on-screen detail (e.g. code) better
+#   the artifact prints to stdout (pipeable); a summary line goes to stderr
+```
+
+**MCP:** `synthesize_categorize(url)` then `synthesize_pass(url, item_schema, aggregate_schema, category="", top_n=20)` — the agent shows you the categories, you pick, it runs the passes. (`category=""`/omitted synthesizes the whole resolved set in one pass.)
+
+**Python** (the engine the above sit on):
 
 ```python
 from dotenv import load_dotenv; load_dotenv()          # load GEMINI_API_KEY
@@ -144,6 +161,8 @@ Exposes screenscribe to any MCP-compatible client; the server handles the video,
 | `analyze_video(url)` | Gemini watches the whole video → structured analysis (summary, sections, key moments). |
 | `extract_frames(url, style)` | Gemini picks moments, ffmpeg extracts PNGs the agent reads. `style="keyframes"` (default) or `"slides"`. |
 | `extract_structured(url, schema)` | Typed JSON conforming to a preset or your JSON Schema. The automation primitive. |
+| `synthesize_categorize(url)` | Discover categories from a channel/playlist's titles (cheap, read-only) — the confirm view. |
+| `synthesize_pass(url, item_schema, aggregate_schema, …)` | Fold the top-N of a category into a compounding cross-video aggregate. |
 | `get_video_analysis(id)` | Read Gemini's whole-video analysis for a session. |
 | `get_session(session_id)` | Session content (transcript, analysis, frame paths) with `analysis_source` metadata. |
 | `list_sessions()` | List all processed videos. |
@@ -183,6 +202,8 @@ screenscribe extract <url> [--transcript-only]   # transcript, or download + Gem
 screenscribe slides  <url>                        # standalone "slide" frames
 screenscribe analyze <url>                         # whole-video structured analysis (no frames)
 screenscribe extract-structured <url> --schema <preset|path|inline>   # typed JSON
+screenscribe synthesize categorize <channel-url>   # discover categories (cheap, no extraction)
+screenscribe synthesize pass <url> --category <name> --item-schema <s> --aggregate-schema <s>
 screenscribe sessions                              # list processed videos
 ```
 
@@ -196,8 +217,8 @@ Common options on the extract/slides/structured commands: `--focus "…"`, `--ti
 screenscribe/
 ├── pyproject.toml         Package metadata + console scripts (screenscribe, screenscribe-mcp)
 ├── src/screenscribe/
-│   ├── main.py            CLI — extract / analyze / slides / extract-structured / sessions
-│   ├── server.py          MCP server — 7 tools
+│   ├── main.py            CLI — extract / analyze / slides / extract-structured / synthesize / sessions
+│   ├── server.py          MCP server — 9 tools
 │   ├── resolver.py        (channel | playlist | list | video URL) → normalized video IDs
 │   ├── structured_extractor.py  Schema-driven typed extraction + batch fan-out (+ presets)
 │   ├── synthesis.py       Cross-video: categorize + compounding synthesize_pass
