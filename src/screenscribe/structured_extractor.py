@@ -116,3 +116,62 @@ def _video_id(url: str) -> str:
 
 def _cache_path(video_id: str, key: str) -> Path:
     return session_dir(video_id) / "structured" / f"{key}.json"
+
+
+def extract_structured(
+    url,
+    schema_arg,
+    *,
+    focus="",
+    time_range="",
+    force=False,
+    model=GEMINI_MODEL,
+    media_resolution_low=GEMINI_MEDIA_RESOLUTION_LOW,
+) -> dict:
+    """
+    Extract JSON conforming to `schema_arg` (dict | preset name | path | inline JSON)
+    from the video at `url`. Returns a result dict:
+      {"status": "success", "session_id", "key", "cached", "data"}
+      {"status": "invalid", "session_id", "key", "error", "raw"}
+      {"status": "error", "error"}
+    """
+    from screenscribe.gemini_selector import _call_gemini, gemini_available
+
+    if not gemini_available():
+        return {"status": "error",
+                "error": "extract_structured needs GEMINI_API_KEY (Gemini watches the video)."}
+
+    schema = resolve_schema(schema_arg)          # may raise ValueError (caller handles)
+    key = schema_key(schema_arg)
+    video_id = _video_id(url)
+    cache = _cache_path(video_id, key)
+
+    if cache.exists() and not force:
+        cached = json.loads(cache.read_text())
+        return {"status": "success", "session_id": video_id, "key": key,
+                "cached": True, "data": cached["data"]}
+
+    parsed_range = _parse_time_range(time_range) if time_range else None
+    prompt = build_extraction_prompt(schema, focus)
+
+    raw = _call_gemini(url, model, prompt, parsed_range, media_resolution_low,
+                       response_json_schema=schema)
+    ok, data, err = validate_output(raw, schema)
+    if not ok:
+        retry_prompt = (
+            prompt
+            + f"\nYour previous output failed validation: {err}\n"
+            + "Return corrected JSON that matches the schema exactly."
+        )
+        raw = _call_gemini(url, model, retry_prompt, parsed_range, media_resolution_low,
+                           response_json_schema=schema)
+        ok, data, err = validate_output(raw, schema)
+
+    if not ok:
+        return {"status": "invalid", "session_id": video_id, "key": key,
+                "error": err, "raw": raw}
+
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({"schema": schema, "data": data}, indent=2))
+    return {"status": "success", "session_id": video_id, "key": key,
+            "cached": False, "data": data}

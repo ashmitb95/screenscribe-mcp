@@ -100,3 +100,67 @@ def test_build_extraction_prompt_includes_focus_and_description():
     schema = {"type": "object", "description": "the CLI commands"}
     prompt = build_extraction_prompt(schema, "auth setup")
     assert "the CLI commands" in prompt and "auth setup" in prompt
+
+
+import screenscribe.gemini_selector as gs
+import screenscribe.session as sess
+import screenscribe.structured_extractor as se
+
+_OBJ_SCHEMA = {"type": "object", "properties": {"n": {"type": "number"}}, "required": ["n"]}
+
+
+def _setup(monkeypatch, tmp_path):
+    monkeypatch.setattr(sess, "SESSIONS_DIR", tmp_path)
+    monkeypatch.setattr(gs, "gemini_available", lambda: True)
+
+
+def test_extract_structured_success(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(gs, "_call_gemini", lambda *a, **k: '{"n": 7}')
+    out = se.extract_structured("https://youtu.be/abc123", _OBJ_SCHEMA)
+    assert out["status"] == "success"
+    assert out["data"] == {"n": 7}
+    assert out["cached"] is False
+    assert out["session_id"] == "abc123"
+
+
+def test_extract_structured_retries_then_succeeds(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    calls = []
+    def fake(*a, **k):
+        calls.append(1)
+        return '{"n": "bad"}' if len(calls) == 1 else '{"n": 7}'
+    monkeypatch.setattr(gs, "_call_gemini", fake)
+    out = se.extract_structured("https://youtu.be/abc123", _OBJ_SCHEMA)
+    assert len(calls) == 2
+    assert out["status"] == "success" and out["data"] == {"n": 7}
+
+
+def test_extract_structured_invalid_after_retry(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(gs, "_call_gemini", lambda *a, **k: '{"n": "bad"}')
+    out = se.extract_structured("https://youtu.be/abc123", _OBJ_SCHEMA)
+    assert out["status"] == "invalid"
+    assert out["raw"] == '{"n": "bad"}'
+    assert out["error"]
+
+
+def test_extract_structured_uses_cache(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    calls = []
+    def fake(*a, **k):
+        calls.append(1)
+        return '{"n": 7}'
+    monkeypatch.setattr(gs, "_call_gemini", fake)
+    se.extract_structured("https://youtu.be/abc123", _OBJ_SCHEMA)
+    out = se.extract_structured("https://youtu.be/abc123", _OBJ_SCHEMA)
+    assert len(calls) == 1          # second served from cache
+    assert out["cached"] is True
+    assert out["data"] == {"n": 7}
+
+
+def test_extract_structured_requires_gemini(monkeypatch, tmp_path):
+    monkeypatch.setattr(sess, "SESSIONS_DIR", tmp_path)
+    monkeypatch.setattr(gs, "gemini_available", lambda: False)
+    out = se.extract_structured("https://youtu.be/abc123", _OBJ_SCHEMA)
+    assert out["status"] == "error"
