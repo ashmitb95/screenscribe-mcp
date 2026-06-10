@@ -313,6 +313,35 @@ def cmd_analyze(args):
     print(f"  Analysis : {s_dir / 'gemini_analysis.json'}")
 
 
+# ── extract-structured ──────────────────────────────────────────────────────────
+
+def cmd_extract_structured(args):
+    from screenscribe.structured_extractor import extract_structured, list_presets
+
+    try:
+        result = extract_structured(
+            args.url, args.schema, focus=args.focus,
+            time_range=args.time_range, force=args.force,
+        )
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        print(f"Presets: {', '.join(list_presets())}", file=sys.stderr)
+        sys.exit(1)
+
+    status = result.get("status")
+    if status == "success":
+        # Data → stdout (pipeable); metadata → stderr.
+        print(json.dumps(result["data"], indent=2))
+        print(f"[{result['key']}] cached={result['cached']} session={result['session_id']}",
+              file=sys.stderr)
+    elif status == "invalid":
+        print(f"ERROR: model output failed schema validation: {result['error']}", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print(f"ERROR: {result.get('error', 'unknown error')}", file=sys.stderr)
+        sys.exit(1)
+
+
 # ── sessions ──────────────────────────────────────────────────────────────────
 
 def cmd_sessions(_args):
@@ -381,6 +410,21 @@ def main():
     p_analyze.add_argument("--force", action="store_true",
                            help="Regenerate even if an analysis already exists")
 
+    # extract-structured
+    p_struct = sub.add_parser("extract-structured",
+                              help="Extract typed JSON from a video against a schema/preset")
+    p_struct.add_argument("url", help="YouTube URL")
+    p_struct.add_argument("--schema", required=True,
+                          help="Preset name, path to a .json schema, or inline JSON schema. "
+                               "Presets: cli_commands, final_config, step_sequence, "
+                               "code_blocks, resources_mentioned, chapters, recipe")
+    p_struct.add_argument("--focus", type=str, default="",
+                          help="Narrow what to extract (e.g. 'only the auth setup')")
+    p_struct.add_argument("--time-range", type=str, default="",
+                          help="Restrict to time range: START-END in seconds or MM:SS")
+    p_struct.add_argument("--force", action="store_true",
+                          help="Re-run even if a cached result exists")
+
     # sessions
     sub.add_parser("sessions", help="List all processed videos")
 
@@ -392,6 +436,8 @@ def main():
         cmd_analyze(args)
     elif args.command == "slides":
         cmd_slides(args)
+    elif args.command == "extract-structured":
+        cmd_extract_structured(args)
     elif args.command == "sessions":
         cmd_sessions(args)
     else:
