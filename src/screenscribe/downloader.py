@@ -58,3 +58,15 @@ def fetch_transcript(video_id: str, output_dir: Path) -> list[dict]:
 
     print(f"  Transcript saved: {len(transcript)} segments → {transcript_path}")
     return transcript
+
+
+def fetch_transcript_safe(video_id: str, output_dir: Path) -> list[dict]:
+    """fetch_transcript, but non-fatal: returns [] (with a warning) when no
+    transcript is available — e.g. a non-English video with no English captions.
+    Use this where the transcript is optional context (frame extraction watches
+    the video directly), so a missing transcript must not abort the command."""
+    try:
+        return fetch_transcript(video_id, output_dir)
+    except Exception as e:
+        print(f"  Warning: no transcript fetched ({e.__class__.__name__}); continuing without it.")
+        return []
