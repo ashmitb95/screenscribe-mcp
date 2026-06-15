@@ -51,6 +51,15 @@ def test_recipe_preset_exposes_hero_shot_seconds():
     assert hero["properties"]["seconds"]["type"] == "number"
 
 
+def test_recipe_preset_tips_carry_a_timestamp():
+    # Each tip records the second it is given, so a downstream exporter can attach
+    # it to the recipe step in progress at that moment.
+    items = load_preset("recipe")["properties"]["tips"]["items"]
+    assert items["type"] == "object"
+    assert "text" in items["properties"]
+    assert items["properties"]["seconds"]["type"] == "number"
+
+
 def test_resolve_schema_dict_passthrough():
     s = {"type": "object"}
     assert resolve_schema(s) is s
