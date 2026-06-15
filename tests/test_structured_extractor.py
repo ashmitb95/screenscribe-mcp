@@ -44,6 +44,13 @@ def test_load_preset_known_and_unknown():
     assert load_preset("nope") is None
 
 
+def test_recipe_preset_exposes_hero_shot_seconds():
+    # The recipe preset asks Gemini for the best frame to screenshot for a recipe
+    # card (a hero image for the website), as a numeric timestamp.
+    hero = load_preset("recipe")["properties"]["hero_shot"]
+    assert hero["properties"]["seconds"]["type"] == "number"
+
+
 def test_resolve_schema_dict_passthrough():
     s = {"type": "object"}
     assert resolve_schema(s) is s

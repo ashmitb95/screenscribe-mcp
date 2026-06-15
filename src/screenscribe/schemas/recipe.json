@@ -36,6 +36,15 @@
       "type": "array",
       "description": "Techniques or tips the cook gives for a better result.",
       "items": { "type": "string" }
+    },
+    "hero_shot": {
+      "type": "object",
+      "description": "The single most visually appealing moment to screenshot as a recipe-card hero image — ideally the finished, fully plated dish, well-lit and complete.",
+      "properties": {
+        "seconds": { "type": "number", "description": "Timestamp in seconds of that best frame" },
+        "reason": { "type": "string", "description": "What is shown and why it is the best hero frame" }
+      },
+      "required": ["seconds"]
     }
   },
   "required": ["dish", "ingredients", "steps"]
