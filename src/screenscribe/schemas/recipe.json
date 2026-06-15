@@ -2,7 +2,8 @@
   "type": "object",
   "description": "A complete cooking recipe extracted from a cooking-tutorial video, including ingredients with quantities, the ordered cooking process, and tips.",
   "properties": {
-    "dish": { "type": "string", "description": "Name of the dish (transliterate if the video is not in English)" },
+    "dish": { "type": "string", "description": "Name of the dish (transliterate to the Latin alphabet if the video is not in English)" },
+    "title_bn": { "type": "string", "description": "The dish name in its original script (e.g. Bengali / Devanagari), exactly as spoken or shown on screen, if the video is not in English" },
     "servings": { "type": "string", "description": "How many it serves, or what it is served with, if stated" },
     "ingredients": {
       "type": "array",

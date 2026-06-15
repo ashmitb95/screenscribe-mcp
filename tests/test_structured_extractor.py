@@ -51,6 +51,11 @@ def test_recipe_preset_exposes_hero_shot_seconds():
     assert hero["properties"]["seconds"]["type"] == "number"
 
 
+def test_recipe_preset_captures_native_title():
+    # The dish name in its original script (e.g. Bengali) for the website cards.
+    assert load_preset("recipe")["properties"]["title_bn"]["type"] == "string"
+
+
 def test_recipe_preset_tips_carry_a_timestamp():
     # Each tip records the second it is given, so a downstream exporter can attach
     # it to the recipe step in progress at that moment.
