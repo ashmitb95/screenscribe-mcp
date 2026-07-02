@@ -33,9 +33,12 @@ Claude Code usage:
     }
   (The key is also read from the shell environment / a .env in the working dir.)
 
-Then in your client, just mention a YouTube URL — the agent will call
-extract_frames / analyze_video as needed, then use get_session to answer
-questions with full repo context.
+Then in your client, just mention a YouTube URL — or a local video file (a path
+like /videos/clip.mp4 or a file:// URI) — and the agent will call extract_frames
+/ analyze_video as needed, then use get_session to answer questions with full
+repo context. For analyze_video, extract_frames, and extract_structured, `url`
+accepts either; Gemini uploads a local file and watches it the same way (local
+files have no transcript). extract_transcript is YouTube-only.
 """
 
 import json
